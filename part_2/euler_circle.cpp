@@ -21,7 +21,7 @@ void EulerCircle::findEulerianCircuit()
     }
 
     // If all degrees are even, run Hierholzer's algorithm
-    std::vector<int> circuit;
+    std::vector<int> circuit; // initialize
     hierholzer(adjList, 0, circuit);
     // Print the Eulerian circuit
     std::cout << "Eulerian circuit: ";
@@ -32,6 +32,18 @@ void EulerCircle::findEulerianCircuit()
     std::cout << std::endl;
 }
 
+/*
+Hierholzer’s algorithm finds an Eulerian circuit by:
+
+1. Starting at any vertex.
+2. Following edges (removing them as you go) until you return to the starting vertex, forming a cycle.
+3. If there are unused edges, start a new cycle from a vertex in the existing cycle that has unused edges,
+and merge the cycles.
+4. Repeat until all edges are used.
+
+Result: a path that visits every edge exactly once and returns to the start.
+
+*/
 void EulerCircle::hierholzer(std::vector<std::vector<int>>& adjList, int start, std::vector<int>& circuit) 
 {
     std::vector<int> stack;
@@ -41,8 +53,8 @@ void EulerCircle::hierholzer(std::vector<std::vector<int>>& adjList, int start, 
         int u = stack.back();
         if (!adjList[u].empty()) 
         {
-            int v = adjList[u].back();
-            adjList[u].pop_back();
+            int v = adjList[u].back(); // saves the v vertex
+            adjList[u].pop_back(); // removes the last neighbor (vertex) from the adjacency list of vertex u(the edge uv is removed)
             // Remove the edge in the other direction for undirected graphs
             for (auto it = adjList[v].begin(); it != adjList[v].end(); ++it) 
             {
@@ -60,5 +72,5 @@ void EulerCircle::hierholzer(std::vector<std::vector<int>>& adjList, int start, 
             stack.pop_back();
         }
     }
-    std::reverse(circuit.begin(), circuit.end());
+    std::reverse(circuit.begin(), circuit.end()); // reverse the circuit to get the correct order
 }
