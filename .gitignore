@@ -38,5 +38,10 @@
 *.app
 main
 
+# Gcov
+*.gcov
+*.gcda
+*.gcno
+
 # debug information files
 *.dwo

@@ -5,6 +5,9 @@
 Graph generate_random_graph(int vertices, int edges, int seed) 
 {
     Graph g(vertices, false); // undirected by default
+    /*
+    Generates a random graph with the specified number of vertices and edges.
+    */
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int> dist(0, vertices - 1);
 
@@ -12,6 +15,12 @@ Graph generate_random_graph(int vertices, int edges, int seed)
     int added = 0;
     while (added < edges) 
     {
+        /*
+        Generate random edge (u, v)
+        Ensure no self-loops (u != v) and no duplicate edges
+        make_pair creates a pair representing an undirected edge between vertices u and v,
+        always storing the smaller vertex first.
+        */
         int u = dist(rng);
         int v = dist(rng);
         if (u == v) continue; // no self-loops

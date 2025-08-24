@@ -20,10 +20,12 @@ int main(int argc, char* argv[])
     int opt;
 
     // Parse command-line arguments
-    while ((opt = getopt(argc, argv, "v:e:s:")) != -1) 
+    while ((opt = getopt(argc, argv, "v:e:s:")) != -1) //getopt returns the character of the option found
     {
-        switch (opt) {
+        switch (opt) 
+        {
             case 'v':
+            //atoi - ASCII to integer
                 vertices = std::atoi(optarg);
                 break;
             case 'e':
