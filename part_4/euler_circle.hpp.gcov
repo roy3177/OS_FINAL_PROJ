@@ -1,0 +1,24 @@
+        -:    0:Source:../part_2/euler_circle.hpp
+        -:    0:Graph:main-main.gcno
+        -:    0:Data:main-main.gcda
+        -:    0:Runs:3
+        -:    1:#pragma once
+        -:    2:
+        -:    3:#include <iostream>
+        -:    4:#include <vector>
+        -:    5:#include <numeric>
+        -:    6:#include <algorithm>
+        -:    7:#include "../part_1/graph_impl.hpp"
+        -:    8:
+        -:    9:class EulerCircle 
+        -:   10:{
+        -:   11:public:
+        2:   12:    EulerCircle(const Graph& graph) : g(graph) {}
+        -:   13:
+        -:   14:    void findEulerianCircuit(); 
+        -:   15:
+        -:   16:    const Graph& g;
+        -:   17:
+        -:   18:    // Hierholzer's algorithm for Eulerian circuit
+        -:   19:    void hierholzer(std::vector<std::vector<int>>& adjList, int start, std::vector<int>& circuit);
+        -:   20:};
