@@ -1,8 +1,6 @@
 #include <iostream>
 #include "graph_impl.hpp"
 
-
-
 // Example usage
 int main() 
 {

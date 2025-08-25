@@ -9,6 +9,9 @@ main: main.cpp ../part_1/graph_impl.cpp ../part_2/euler_circle.cpp ../part_3/ran
 gcov: all
 	./run_tests.sh
 	gcov main-main.gcno
+# $(shell echo $$((RANDOM % 50 + 2))) picks a random number of vertices between 2 and 51.
+# $(shell echo $$((RANDOM % 100 + 1))) picks a random number of edges between 1 and 100.
+# $(shell date +%s) gives a random seed.
 valgrind: main
 	valgrind --leak-check=full ./main -v $(shell echo $$((RANDOM % 50 + 2))) -e $(shell echo $$((RANDOM % 100 + 1))) -s $(shell date +%s)
 clean:
