@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS = -std=c++17 -Wall -Wextra --coverage
+CXXFLAGS = -std=c++17 -Wall -Wextra --coverage -pg
 
 
 all: main
@@ -14,6 +14,11 @@ gcov: all
 # $(shell date +%s) gives a random seed.
 valgrind: main
 	valgrind --leak-check=full ./main -v $(shell echo $$((RANDOM % 50 + 2))) -e $(shell echo $$((RANDOM % 100 + 1))) -s $(shell date +%s)
+callgraph: main
+	valgrind --tool=callgrind ./main -v 10 -e 15 -s 42
+gprof: main
+	./main -v 10 -e 15 -s 42
+	gprof ./main gmon.out > gprof_report.txt
 clean:
-	rm -f main *.gcno *.gcda *.gcov
+	rm -f main *.gcno *.gcda *.gcov callgrind.out* gprof_report.txt gmon.out
 .PHONY: all clean
