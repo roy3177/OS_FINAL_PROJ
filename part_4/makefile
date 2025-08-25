@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS = -std=c++17 -Wall -Wextra --coverage -pg
+CXXFLAGS = -std=c++17 -Wall -Wextra --coverage
 
 
 all: main
@@ -16,9 +16,12 @@ valgrind: main
 	valgrind --leak-check=full ./main -v $(shell echo $$((RANDOM % 50 + 2))) -e $(shell echo $$((RANDOM % 100 + 1))) -s $(shell date +%s)
 callgraph: main
 	valgrind --tool=callgrind ./main -v 10 -e 15 -s 42
-gprof: main
-	./main -v 10 -e 15 -s 42
-	gprof ./main gmon.out > gprof_report.txt
+
+main_gprof: main.cpp ../part_1/graph_impl.cpp ../part_2/euler_circle.cpp ../part_3/random_graph.cpp
+	$(CXX) $(CXXFLAGS) -pg -o main_gprof main.cpp ../part_1/graph_impl.cpp ../part_2/euler_circle.cpp ../part_3/random_graph.cpp
+gprof: main_gprof
+	./main_gprof -v 10 -e 15 -s 42
+	gprof ./main_gprof gmon.out > gprof_report.txt
 clean:
-	rm -f main *.gcno *.gcda *.gcov callgrind.out* gprof_report.txt gmon.out
+	rm -f main main_gprof *.gcno *.gcda *.gcov callgrind.out* gprof_report.txt gmon.out
 .PHONY: all clean
