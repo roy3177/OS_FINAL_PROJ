@@ -1,17 +1,7 @@
-#include <iostream>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <vector>
-#include <sstream>
-#include "../part_1/graph_impl.hpp"
-#include "../part_2/euler_circle.hpp"
-#include "../part_2/euler_circle.hpp"
-#include "../part_1/graph_impl.hpp"
+#include "server.hpp"
 
-#define PORT 8080
-
-int main() {
+void run_server() 
+{
 	int  new_socket;
 	struct sockaddr_in address;
 	int opt = 1;
@@ -20,13 +10,15 @@ int main() {
 
 	// Create socket file descriptor:
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if ((server_fd ) == 0) {
+	if ((server_fd ) == 0) 
+    {
 		perror("socket failed");
 		exit(EXIT_FAILURE);
 	}
 
 	// Forcefully attaching socket to the port
-	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) 
+    {
 		perror("setsockopt");
 		exit(EXIT_FAILURE);
 	}
@@ -34,22 +26,26 @@ int main() {
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(PORT);
 
-	if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+	if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) 
+    {
 		perror("bind failed");
 		exit(EXIT_FAILURE);
 	}
-	if (listen(server_fd, 3) < 0) {
+	if (listen(server_fd, 3) < 0) 
+    {
 		perror("listen");
 		exit(EXIT_FAILURE);
 	}
 	std::cout << "Server listening on port " << PORT << std::endl;
 
-	while (true) {
+	while (true) 
+    {
         new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
 		
         std::cout << "Client connected." << std::endl;
         
-        if (new_socket < 0) {
+        if (new_socket < 0) 
+        {
 			perror("accept");
 			exit(EXIT_FAILURE);
 		}
@@ -57,7 +53,8 @@ int main() {
 		std::string input(buffer, valread);
 
         // Handle client exit
-        if (input == "EXIT_CLIENT") {
+        if (input == "EXIT_CLIENT") 
+        {
             std::cout << "Client exited." << std::endl;
             close(new_socket);
             continue;
@@ -69,24 +66,31 @@ int main() {
 
         // Validate vertices and edges
         std::ostringstream msg;
-        if (V <= 0) {
+        if (V <= 0) 
+        {
             msg << "Error: Number of vertices must be positive.\n";
-        } else if (E < 0) {
+        } 
+        else if (E < 0) 
+        {
             msg << "Error: Number of edges cannot be negative.\n";
-        } else {
+        } 
+        else 
+        {
             Graph g(V,false); // false for undirected
             bool valid = true;
             for (int i = 0; i < E; ++i) {
                 int u, v;
                 iss >> u >> v;
-                if (u < 0 || v < 0 || u >= V || v >= V) {
+                if (u < 0 || v < 0 || u >= V || v >= V) 
+                {
                     msg << "Error: Invalid edge (" << u << ", " << v << "). Vertices must be in range 0 to " << V-1 << ".\n";
                     valid = false;
                     break;
                 }
                 g.addEdge(u, v);
             }
-            if (valid) {
+            if (valid) 
+            {
                 // Run Eulerian circuit algorithm and capture output
                 std::ostringstream oss;
                 std::streambuf* old_cout = std::cout.rdbuf(oss.rdbuf());
@@ -110,7 +114,13 @@ int main() {
 		send(new_socket, result.c_str(), result.size(), 0);
 		close(new_socket);
 	}
-	return 0;
+	return;
+}
+
+int main()
+{
+    run_server();
+    return 0;
 }
 
 

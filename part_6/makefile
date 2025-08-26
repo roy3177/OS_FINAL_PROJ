@@ -6,10 +6,10 @@ SRCS_CLIENT=client.cpp
 
 all: server client
 
-server: $(SRCS_SERVER)
+server: $(SRCS_SERVER) server.hpp
 	$(CXX) $(CXXFLAGS) -o server $(SRCS_SERVER)
 
-client: $(SRCS_CLIENT)
+client: $(SRCS_CLIENT) client.hpp
 	$(CXX) $(CXXFLAGS) -o client $(SRCS_CLIENT)
 
 clean:
