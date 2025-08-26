@@ -37,6 +37,8 @@
 *.out
 *.app
 main
+server
+client
 
 # Gcov
 *.gcov
