@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <stdexcept>
+#include <algorithm>
 #include "graph_impl.hpp"
 
 
@@ -13,6 +14,7 @@ private:
     int E;  // number of edges
     bool directed; // default is undirected
     std::vector<std::vector<int>> adj; // adjacency list
+    std::vector<std::vector<int>> capacity; // capacity[u][v] = capacity of edge u->v
 
 public:
 // Constructor:
@@ -20,11 +22,11 @@ public:
 The vertices number passed to adj creates a vector with empty vector lists,
 the size of the vertices we have(each vertex represent an empty list of its neighbors)
 */
-    Graph(int vertices, bool isDirected) : 
-    V(vertices), E(0), directed(isDirected), adj(vertices) {}
+Graph(int vertices, bool isDirected) : 
+    V(vertices), E(0), directed(isDirected), adj(vertices), capacity(vertices, std::vector<int>(vertices, 0)) {}
 
     // Add edge (u -> v)
-    void addEdge(int u, int v);
+    void addEdge(int u, int v, int cap = 1); // default capacity is 1 if not specified
 
 
     // Get number of vertices
@@ -41,8 +43,14 @@ the size of the vertices we have(each vertex represent an empty list of its neig
     // Return adjacency list of a vertex
     const std::vector<int>& get_neighbors(int u) const;
 
+    // Getter for capacity
+    const std::vector<std::vector<int>>& get_capacity() const { return capacity; }
+
     // Print graph (for debugging)
     void print() const;
+
+    // Returns true if there is an edge from u to v
+    bool is_edge(int u, int v) const;
 };
 
 
