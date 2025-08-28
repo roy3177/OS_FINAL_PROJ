@@ -1,7 +1,7 @@
 CXX=g++
 CXXFLAGS=-std=c++17 -Wall -Wextra
 
-SRCS_ALGO=graph_algos.cpp Finding_Max_Flow.cpp Finding_Num_Cliques.cpp ../part_1/graph_impl.cpp
+SRCS_ALGO=graph_algos.cpp Finding_Max_Flow.cpp Finding_Num_Cliques.cpp Finding_SCC.cpp MST_Weight.cpp ../part_1/graph_impl.cpp
 
 all: main
 

@@ -1,6 +1,5 @@
 #include "Finding_Num_Cliques.hpp"
-#include <vector>
-#include <algorithm>
+
 
 // Helper function to check if a set of vertices forms a clique
 static bool isClique(const Graph& graph, const std::vector<int>& vertices) 

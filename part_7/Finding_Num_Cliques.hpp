@@ -2,6 +2,9 @@
 
 #include "../part_1/graph_impl.hpp"
 
+#include <vector>
+#include <algorithm>
+
 class FindingNumCliques 
 {
 public:

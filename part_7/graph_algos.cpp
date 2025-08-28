@@ -34,5 +34,25 @@ int main()
     std::cout << "k = " << k << std::endl;
     std::cout << "Number of " << k << "-cliques: " << numCliques << std::endl;
 
+    // --- Finding SCC ---
+    std::cout << "\n--- Finding Strongly Connected Components (SCC) ---\n";
+    FindingSCC sccFinder;
+    auto sccs = sccFinder.findSCCs(g);
+    std::cout << "Number of strongly connected components: " << sccs.size() << std::endl;
+    for (const auto& component : sccs) 
+    {
+        std::cout << "SCC: ";
+        for (int v : component) {
+            std::cout << v << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // --- MST Weight ---
+    std::cout << "\n--- Finding Minimum Spanning Tree (MST) Weight ---\n";
+    MSTWeight mstFinder;
+    int mstWeight = mstFinder.findMSTWeight(g);
+    std::cout << "MST weight: " << mstWeight << std::endl;
+
     return 0;
 }
