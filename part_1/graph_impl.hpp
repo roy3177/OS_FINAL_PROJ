@@ -46,11 +46,13 @@ Graph(int vertices, bool isDirected) :
     // Getter for capacity
     const std::vector<std::vector<int>>& get_capacity() const { return capacity; }
 
+    // Returns true if there is an edge from u to v
+    bool is_edge(int u, int v) const;
+
     // Print graph (for debugging)
     void print() const;
 
-    // Returns true if there is an edge from u to v
-    bool is_edge(int u, int v) const;
+
 };
 
 
