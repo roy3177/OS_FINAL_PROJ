@@ -1,5 +1,5 @@
 #pragma once
-#include "Algorithm.hpp"
+#include "IAlgorithm.hpp"
 #include "MST_Weight.hpp"
 
 class MSTAlgo : public IAlgorithm {

@@ -1,8 +1,9 @@
 #pragma once
-#include "Algorithm.hpp"
+#include "IAlgorithm.hpp"
 #include "Finding_Max_Flow.hpp"
 
-class MaxFlowAlgo : public IAlgorithm {
+class MaxFlowAlgo : public IAlgorithm 
+{
 public:
     std::string id() const override { return "MAX_FLOW"; }
     std::string run(const Graph& g, const std::unordered_map<std::string,int>& params) override {

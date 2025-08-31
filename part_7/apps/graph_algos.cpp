@@ -1,10 +1,5 @@
-#include "../part_1/graph_impl.hpp"
-#include "../part_2/euler_circle.hpp"
+
 #include "graph_algos.hpp"
-#include "Finding_Max_Flow.hpp"
-#include "Finding_Num_Cliques.hpp"
-#include "Finding_SCC.hpp"
-#include "MST_Weight.hpp"
 
 int main()
 {

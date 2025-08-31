@@ -3,10 +3,11 @@
 #include <string>
 #include <unordered_map>
 
-#include "../part_1/graph_impl.hpp"
+#include "../../part_1/graph_impl.hpp"
 
 // Strategy interface for algorithms
-class IAlgorithm {
+class IAlgorithm 
+{
 public:
     virtual ~IAlgorithm() = default;
     virtual std::string id() const = 0;

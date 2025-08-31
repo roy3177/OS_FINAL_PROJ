@@ -1,20 +1,9 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <vector>
-#include <algorithm>
-#include <cstring>
-#include <iostream>
-#include <limits>
-#include <set>
-#include <sstream>
-#include <string>
-#include <tuple>
+#include "client.hpp"
 
-static void println_rule() { std::cout << "----------------------------------------\n"; }
+void println_rule() { std::cout << "----------------------------------------\n"; }
 
-static int prompt_int(const std::string& msg, int minVal, int maxVal) {
+int prompt_int(const std::string& msg, int minVal, int maxVal) 
+{
     while (true) {
         std::cout << msg;
         std::string s; std::getline(std::cin, s);
@@ -28,7 +17,8 @@ static int prompt_int(const std::string& msg, int minVal, int maxVal) {
     }
 }
 
-int main(int argc, char* argv[]) {
+int run_client(int argc, char* argv[])
+{
     int port = 9090;
     if (argc >= 2) port = std::atoi(argv[1]);
     std::cout << "Welcome to Graph Algorithms Client\n";
@@ -128,4 +118,9 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "Bye.\n";
     return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    return run_client(argc, argv);
 }

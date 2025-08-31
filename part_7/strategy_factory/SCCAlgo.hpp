@@ -1,5 +1,5 @@
 #pragma once
-#include "Algorithm.hpp"
+#include "IAlgorithm.hpp"
 #include "Finding_SCC.hpp"
 
 class SCCAlgo : public IAlgorithm {

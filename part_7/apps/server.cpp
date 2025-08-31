@@ -1,25 +1,11 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include <cerrno>
-#include <cstring>
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
-#include "Finding_Max_Flow.hpp"
-#include "../part_1/graph_impl.hpp"
-#include "AlgorithmFactory.hpp"
+#include "server.hpp"
 
 // Protocols supported:
 // A) Simple (part_6-like): first line: ALG <ID> DIRECTED <0/1>; second: V E; then E lines: u v [w]; optional PARAM lines; END
 // B) Verbose lines (as before) are still accepted.
 
-static bool recv_all_lines(int fd, std::string &out) {
+bool recv_all_lines(int fd, std::string &out) 
+{
     char buf[1024];
     out.clear();
     while (true) {
@@ -43,14 +29,15 @@ static bool recv_all_lines(int fd, std::string &out) {
     }
 }
 
-static void send_response(int fd, const std::string &body, bool ok = true) {
+void send_response(int fd, const std::string &body, bool ok) {
     std::ostringstream oss;
     oss << (ok ? "OK\n" : "ERR\n") << body << "\nEND\n";
     auto s = oss.str();
     (void)send(fd, s.c_str(), s.size(), 0);
 }
 
-int main(int argc, char *argv[]) {
+int run_server(int argc, char *argv[]) 
+{
     int port = 9090;
     if (argc >= 2) {
         port = std::atoi(argv[1]);
@@ -211,4 +198,8 @@ int main(int argc, char *argv[]) {
 
     close(srv);
     return 0;
+}
+
+int main(int argc, char *argv[]) {
+    return run_server(argc, argv);
 }
