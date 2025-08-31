@@ -1,5 +1,5 @@
 
-#include "graph_algos.hpp"
+#include "algos_demo.hpp"
 
 int main()
 {
