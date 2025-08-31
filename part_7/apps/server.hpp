@@ -18,6 +18,8 @@
 #include "../part_1/graph_impl.hpp"
 #include "../strategy_factory/AlgorithmFactory.hpp"
 
+#define PORT 9090 // Default port
+
 bool recv_all_lines(int fd, std::string &out);
 void send_response(int fd, const std::string &body, bool ok = true);
 int run_server(int argc, char* argv[]);

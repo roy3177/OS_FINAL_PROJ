@@ -1,7 +1,9 @@
 #include "client.hpp"
 
+// Helper function for printing a separator line
 void println_rule() { std::cout << "----------------------------------------\n"; }
 
+// Helper function for prompting an integer input:
 int prompt_int(const std::string& msg, int minVal, int maxVal) 
 {
     while (true) {
@@ -17,19 +19,42 @@ int prompt_int(const std::string& msg, int minVal, int maxVal)
     }
 }
 
+
 int run_client(int argc, char* argv[])
 {
-    int port = 9090;
-    if (argc >= 2) port = std::atoi(argv[1]);
+    int port = PORT; // Reads port from argv (default 9090).
+    /*
+    * argc >= 2 means a user passed at least one argument
+
+    * std::atoi(argv[1]) parses that argument as an int and assigns it to port,
+      overriding the initial PORT macro value.
+    */
+    if (argc >= 2)
+    {
+        port = std::atoi(argv[1]);
+    } 
     std::cout << "Welcome to Graph Algorithms Client\n";
     // Open one connection and reuse it until the user exits
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { perror("socket"); return 1; }
-    sockaddr_in sa{}; sa.sin_family = AF_INET; sa.sin_port = htons(port);
-    if (inet_pton(AF_INET, "127.0.0.1", &sa.sin_addr) <= 0) { perror("inet_pton"); close(sock); return 1; }
-    if (connect(sock, (sockaddr*)&sa, sizeof(sa)) < 0) { perror("connect"); close(sock); return 1; }
+    if (sock < 0)
+    {
+        perror("socket");
+        return 1; 
+    }
+    sockaddr_in sa{};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
+    if (inet_pton(AF_INET, "127.0.0.1", &sa.sin_addr) <= 0)
+    {
+        perror("inet_pton"); close(sock); return 1; 
+    }
+    if (connect(sock, (sockaddr*)&sa, sizeof(sa)) < 0)
+    {
+        perror("connect"); close(sock); return 1;
+    }
 
-    while (true) {
+    while (true) 
+    {
         println_rule();
 
         // Numeric menu for algorithm selection
@@ -40,9 +65,16 @@ int run_client(int argc, char* argv[])
             "  3) CLIQUES\n"
             "  4) MST\n"
             "  0) Exit\n> ", 0, 4);
-    if (sel == 0) { const char* bye = "EXIT\n"; send(sock, bye, std::strlen(bye), 0); close(sock); break; }
+    if (sel == 0) 
+    {
+        const char* bye = "EXIT\n";
+        send(sock, bye, std::strlen(bye), 0);
+        close(sock);
+        break; 
+    }
         std::string alg;
-        switch (sel) {
+        switch (sel) 
+        {
             case 1: alg = "MAX_FLOW"; break;
             case 2: alg = "SCC"; break;
             case 3: alg = "CLIQUES"; break;
@@ -53,24 +85,52 @@ int run_client(int argc, char* argv[])
         bool directed = (alg == "MAX_FLOW" || alg == "SCC");
 
         int V = prompt_int("Enter number of vertices (>=2): ", 2, 1000000);
-    int max_edges = directed ? V * (V - 1) : V * (V - 1) / 2;
-    int E = prompt_int("Enter number of edges (0.." + std::to_string(max_edges) + "): ", 0, max_edges);
+        int max_edges = directed ? V * (V - 1) : V * (V - 1) / 2;
+        int E = prompt_int("Enter number of edges (0.." + std::to_string(max_edges) + "): ", 0, max_edges);
 
         std::set<std::pair<int,int>> undup;
         std::vector<std::tuple<int,int,int>> edges;
         std::cout << "Enter edges as: u v w. For unweighted, omit w.\n";
-        for (int i = 0; i < E; ++i) {
-            while (true) {
+        for (int i = 0; i < E; ++i) 
+        {
+            while (true) 
+            {
                 std::cout << "Edge " << (i+1) << ": ";
                 std::string line; std::getline(std::cin, line);
-                if (line == "exit") { const char* bye = "EXIT\n"; send(sock, bye, std::strlen(bye), 0); close(sock); return 0; }
+                if (line == "exit") 
+                {
+                    const char* bye = "EXIT\n";
+                    send(sock, bye, std::strlen(bye), 0);
+                    close(sock); return 0; 
+                }
                 std::istringstream ls(line);
-                int u,v,w=1; if (!(ls>>u>>v)) { std::cout<<"Bad format\n"; continue; }
-                if (u<0||v<0||u>=V||v>=V||u==v) { std::cout<<"Invalid vertices\n"; continue; }
-                if (ls>>w) { if (w<=0) { std::cout<<"Weight must be >0\n"; continue; } }
-                if (!directed) {
+                int u,v,w=1;
+                if (!(ls>>u>>v)) 
+                {
+                    std::cout<<"Bad format\n";
+                    continue;
+                }
+                if (u<0||v<0||u>=V||v>=V||u==v) 
+                {
+                    std::cout<<"Invalid vertices\n";
+                    continue;
+                }
+                if (ls>>w) 
+                {
+                    if (w<=0) 
+                    {
+                        std::cout<<"Weight must be >0\n";
+                        continue;
+                    }
+                }
+                if (!directed) 
+                {
                     auto a = std::minmax(u,v);
-                    if (undup.count({a.first,a.second})) { std::cout<<"Duplicate edge\n"; continue; }
+                    if (undup.count({a.first,a.second})) 
+                    {
+                        std::cout<<"Duplicate edge\n";
+                        continue; 
+                    }
                     undup.insert({a.first,a.second});
                 }
                 edges.emplace_back(u,v,w);
@@ -79,13 +139,21 @@ int run_client(int argc, char* argv[])
         }
 
         int SRC=-1,SINK=-1,K=-1;
-        if (alg == "MAX_FLOW") {
+        if (alg == "MAX_FLOW") 
+        {
             SRC = prompt_int("SRC: ", 0, V-1);
-            do {
+            do 
+            {
                 SINK = prompt_int("SINK (must be different from SRC): ", 0, V-1);
-                if (SINK == SRC) std::cout << "SINK must be different from SRC\n";
-            } while (SINK == SRC);
-        } else if (alg == "CLIQUES") {
+                if (SINK == SRC)
+                {
+                    std::cout << "SINK must be different from SRC\n";
+                } 
+            }
+            while (SINK == SRC);
+        } 
+        else if (alg == "CLIQUES") 
+        {
             K = prompt_int("K (>=2): ", 2, V);
         }
 
@@ -93,8 +161,10 @@ int run_client(int argc, char* argv[])
         req << "ALG " << alg << " DIRECTED " << (directed?1:0) << "\n";
         req << "V " << V << "\n";
         req << "E " << E << "\n";
-        for (auto &t : edges) {
-            int u,v,w; std::tie(u,v,w)=t;
+        for (auto &t : edges) 
+        {
+            int u,v,w;
+            std::tie(u,v,w)=t; // Creates a tuple of references to those variables.
             req << "EDGE " << u << " " << v << " " << w << "\n";
         }
         if (SRC>=0) req << "PARAM SRC " << SRC << "\n";
@@ -106,16 +176,22 @@ int run_client(int argc, char* argv[])
         send(sock, s.c_str(), s.size(), 0);
 
         char buf[4096]; int n = recv(sock, buf, sizeof(buf), 0);
-        if (n>0) {
+        if (n>0) 
+        {
             println_rule();
             std::cout << std::string(buf, n) << std::endl;
         }
 
-        // Another round?
+    // Another round?
     std::cout << "Type 'exit' to quit or press Enter to run another.\n";
-        std::string again; std::getline(std::cin, again);
-    if (again == "exit") { const char* bye = "EXIT\n"; send(sock, bye, std::strlen(bye), 0); close(sock); break; }
+    std::string again; std::getline(std::cin, again);
+    if (again == "exit") 
+    {
+        const char* bye = "EXIT\n";
+        send(sock, bye, std::strlen(bye), 0);
+        close(sock); break; 
     }
+}
     std::cout << "Bye.\n";
     return 0;
 }

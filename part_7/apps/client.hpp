@@ -15,6 +15,8 @@
 #include <tuple>
 #include <cstdlib>
 
+#define PORT 9090
+
 // Helper UI/IO utilities for the client
 void println_rule();
 int prompt_int(const std::string& msg, int minVal, int maxVal);
