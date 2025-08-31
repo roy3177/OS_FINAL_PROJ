@@ -4,7 +4,6 @@
 #include <vector>
 #include <stdexcept>
 #include <algorithm>
-#include "graph_impl.hpp"
 
 
 class Graph 
