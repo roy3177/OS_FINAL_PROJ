@@ -2,6 +2,11 @@
 #include <memory>
 #include <string>
 #include "IAlgorithm.hpp"
+#include "MaxFlowAlgo.hpp"
+#include "CliquesAlgo.hpp"
+#include "SCCAlgo.hpp"
+#include "MSTAlgo.hpp"
+#include <algorithm>
 
 class AlgorithmFactory 
 {

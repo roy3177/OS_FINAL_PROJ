@@ -1,30 +1,33 @@
 #include "server.hpp"
 
+// Helper function for receiving all lines from a socket
 bool recv_all_lines(int fd, std::string &out) 
 {
-    char buf[1024];
-    out.clear();
+    char buf[1024]; // buffer for receiving data(size is 1024 bytes)
+    out.clear(); // clear the output string
     while (true) 
     {
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n > 0) 
+        ssize_t n = recv(fd, buf, sizeof(buf), 0); // receive data from socket
+        if (n > 0) // if data is received
         {
-            out.append(buf, buf + n);
-            // stop when END line appears
+            out.append(buf, buf + n); // append received data to output string
+            // stop when END line appears:
             if (out.find("\nEND\n") != std::string::npos || out.rfind("\nEND") == out.size() - 4) 
             {
                 return true;
             }
+            // stop when EXIT line appears:
             if (out.find("\nEXIT\n") != std::string::npos || out == "EXIT\n") 
             {
                 return true;
             }
-        } 
+        }
         else if (n == 0) 
         {
             // connection closed
             return !out.empty();
-        } 
+        }
+        // connection error
         else 
         {
             if (errno == EINTR) continue;
@@ -33,6 +36,7 @@ bool recv_all_lines(int fd, std::string &out)
     }
 }
 
+// Helper function for sending a response
 void send_response(int fd, const std::string &body, bool ok) 
 {
     std::ostringstream oss;
@@ -43,7 +47,7 @@ void send_response(int fd, const std::string &body, bool ok)
 
 int run_server(int argc, char *argv[]) 
 {
-    int port = PORT;
+    int port = PORT; // default port is 9090
     if (argc >= 2) 
     {
         port = std::atoi(argv[1]);
@@ -53,6 +57,7 @@ int run_server(int argc, char *argv[])
         }
     }
 
+    // Create socket:
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) 
     {
@@ -60,7 +65,8 @@ int run_server(int argc, char *argv[])
         return 1;
     }
 
-    int opt = 1;
+    int opt = 1; // opt = 1 enables the option (allow reuse of a recently used local address/port,
+    // mainly to avoid “Address already in use” after restarts).
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     sockaddr_in addr{};
@@ -85,6 +91,13 @@ int run_server(int argc, char *argv[])
 
     while (true) 
     {
+        /*
+        * Declares a client address struct (cli) and its length (clilen).
+        * Calls accept to block until a client connects;
+        on success returns a new socket fd for that client.
+        * If accept fails due to an interrupt (EINTR), retry the loop;
+        otherwise log the error and break out of the accept loop.
+        */
         sockaddr_in cli{};
         socklen_t clilen = sizeof(cli);
         int fd = accept(srv, (sockaddr *)&cli, &clilen);
@@ -101,7 +114,10 @@ int run_server(int argc, char *argv[])
 
         while (true) 
         {
-            std::string req;
+            std::string req; // Allocates a buffer string req to hold the incoming request.
+            /*
+            Read from the client until a full request is received (it stops on END or EXIT) or the socket closes/errors.
+            */
             if (!recv_all_lines(fd, req)) 
             {
                 close(fd);
@@ -109,7 +125,7 @@ int run_server(int argc, char *argv[])
                 break;
             }
 
-            // Quick EXIT support
+            // Quick EXIT support:
             if (req == "EXIT\n" || req.find("\nEXIT\n") != std::string::npos) 
             {
                 send_response(fd, "BYE", true);
