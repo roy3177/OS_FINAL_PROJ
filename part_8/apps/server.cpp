@@ -4,7 +4,7 @@ using std::string;
 using std::vector;
 using std::unordered_map;
 
-// IO helpers
+// Helper function for receiving all lines from a socket
 bool recv_all_lines(int fd, std::string &out)
 {
     char buf[1024];
@@ -39,73 +39,92 @@ bool recv_all_lines(int fd, std::string &out)
     }
 }
 
+// Helper function for sending a response to a client
 void send_response(int fd, const std::string &body, bool ok)
 {
-    std::ostringstream oss; oss << (ok?"OK\n":"ERR\n") << body << "\nEND\n"; auto s = oss.str();
+    std::ostringstream oss;
+    oss << (ok ? "OK\n" : "ERR\n") << body << "\nEND\n";
+    auto s = oss.str();
     (void)send(fd, s.c_str(), s.size(), 0);
 }
 
-// Leader–Follower state
+// Leader–Follower state:
 namespace 
 {
-std::mutex g_mu;
-std::condition_variable g_cv;
-bool g_hasLeader = false;
-bool g_shutdown = false;
+    std::mutex g_mu;
+    std::condition_variable g_cv;
+    bool g_hasLeader = false;
+    bool g_shutdown = false;
 }
+
 
 void lf_server_loop(int srv_fd, int workers)
 {
+    /*
+    Worker routine run by each thread in the pool. Implements the Leader–Follower pattern:
+    - Exactly one thread at a time becomes the "leader" and blocks in accept().
+    - After accept() returns, the leader immediately promotes a follower (so another thread
+      goes to accept the next connection) and then the former leader handles the connection.
+    */
     auto worker = [srv_fd]() 
     {
         while (true) 
         {
-            // Become leader
+            // Leader election: wait until there is no current leader (or shutdown requested).
             std::unique_lock<std::mutex> lk(g_mu);
             g_cv.wait(lk, []
             {
-                return !g_hasLeader || g_shutdown;
+                return !g_hasLeader || g_shutdown; // wake when leadership is free or shutdown
             });
+
+            // Graceful exit path (not currently toggled elsewhere).
             if (g_shutdown)
             {
                return; 
             } 
-            g_hasLeader = true; // I'm the leader now
-            lk.unlock();
 
-            // Accept
+            // Become the leader: from now until we finish accept(), we are the only thread doing it.
+            g_hasLeader = true; // I'm the leader now
+            lk.unlock();        // Don't hold the mutex while blocking in accept().
+
+            // Accept a client connection (this may block until a client arrives).
             sockaddr_in cli{};
             socklen_t clilen = sizeof(cli);
             int fd = accept(srv_fd, (sockaddr*)&cli, &clilen);
 
-            // Promote follower immediately
+            // Immediately promote a follower so another thread can accept the next client.
             lk.lock();
-            g_hasLeader = false;
+            g_hasLeader = false;   // leadership is free
             lk.unlock();
-            g_cv.notify_one();
+            g_cv.notify_one();     // wake one waiting follower to become the next leader
 
+            // Handle accept errors.
             if (fd < 0) 
             {
                 if (errno == EINTR)
                 {
-                continue;
+                    // Interrupted by a signal; loop and try again.
+                    continue;
                 }
+                // Hard error: log and end this worker thread (others keep running).
                 std::perror("accept");
                 return;
             }
 
-            // Log client connect
+            // Log client connect information.
             char ipstr[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &cli.sin_addr, ipstr, sizeof(ipstr));
             std::cout << "[LF] Client connected from " << ipstr << ":" << ntohs(cli.sin_port) << "\n";
 
+            // Process the connection on this (former leader) thread.
             handle_client(fd);
 
-            // Log client disconnect
+            // After the client is handled, loop back and compete for leadership again.
             std::cout << "[LF] Client disconnected" << "\n";
         }
     };
 
+    // Start the fixed-size thread pool.
     std::vector<std::thread> pool;
     pool.reserve(workers);
     for (int i=0;i<workers;i++)
@@ -113,15 +132,22 @@ void lf_server_loop(int srv_fd, int workers)
         pool.emplace_back(worker);  
     } 
 
-    // Kick the first leader
+    // Kick off the first leader by ensuring no leader is marked and notifying one waiter.
     {
-        std::lock_guard<std::mutex> lk(g_mu); g_hasLeader=false;
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_hasLeader = false;
     }
     g_cv.notify_one();
 
-    for (auto &t: pool) t.join();
+    // Join threads (blocks forever in normal operation, unless g_shutdown causes exits or
+    // a worker returns due to a persistent accept() error).
+    for (auto &t: pool)
+    {
+        t.join();
+    }
 }
 
+// Helper function for trimming carriage return characters from a string
 static string trim_cr(string s)
 {
     if(!s.empty() && s.back()=='\r')
@@ -131,6 +157,7 @@ static string trim_cr(string s)
     return s;
 }
 
+// Helper function for running an algorithm and handling errors
 static string run_alg_or_error(const string& alg, const Graph& g, const unordered_map<string,int>& params, bool requestedDirected)
 {
     // directed-required algorithms
@@ -150,6 +177,7 @@ static string run_alg_or_error(const string& alg, const Graph& g, const unordere
     return ptr->run(g, params);
 }
 
+// Helper function for serializing graph edges
 static std::string serialize_graph_edges(const Graph& g, bool directed)
 {
     const auto& cap = g.get_capacity();
@@ -207,14 +235,20 @@ static std::string serialize_graph_edges(const Graph& g, bool directed)
 
 void handle_client(int fd)
 {
+    // Persistent per-connection loop: handle multiple requests on the same TCP connection
+    // until the client sends EXIT or the socket closes.
     while (true)
     {
+        // 1) Read a whole request into 'req' (terminated by an END line or EXIT)
         std::string req;
-        if (!recv_all_lines(fd, req))
+        if (!recv_all_lines(fd, req)) // Check for errors or connection closure
         {
+            // Peer closed or error while reading: close and end this connection handler.
             close(fd);
             return; 
         }
+
+        // 2) Immediate shutdown command from client
         if (req == "EXIT\n" || req.find("\nEXIT\n") != string::npos) 
         {
             send_response(fd, "BYE", true);
@@ -222,30 +256,32 @@ void handle_client(int fd)
             return; 
         }
 
-        // Parse request
+        // 3) Parse the line-based protocol into local variables
         std::istringstream iss(req);
         string line;
-        string alg;
-        int V=-1;
-        int E=0; 
-        int directed=0; 
-        int randomFlag=0; 
-        int seed=42; 
-        int src=-1,sink=-1,k=-1; 
-        int wmin=1,wmax=1;
+        string alg;                 // which action to perform (e.g., PREVIEW, ALL, MAX_FLOW, ...)
+        int V=-1;                   // number of vertices (required)
+        int E=0;                    // number of edges for random graph generation
+        int directed=0;             // 0=undirected, 1=directed
+        int randomFlag=0;           // 0=use provided EDGE lines, 1=generate random graph
+        int seed=42;                // seed for deterministic random graph
+        int src=-1,sink=-1,k=-1;    // optional algorithm parameters
+        int wmin=1,wmax=1;          // weight range for random graph
         struct Edge
         {
-            int u,v,w;
+            int u,v,w;             // explicit edges when RANDOM=0
         };
         vector<Edge> edges;
         bool parse_error=false;
         string perr;
+
+        // Parse each line into the appropriate variable/collection
         while (std::getline(iss,line)) 
         {
-            line = trim_cr(line);
+            line = trim_cr(line);   // tolerate Windows CRLF by trimming trailing '\r'
             if (line=="END")
             {
-               break; 
+               break;               // end of this request
             } 
             if (line.rfind("ALG ",0)==0)
             {
@@ -283,6 +319,7 @@ void handle_client(int fd)
             }
             else if (line.rfind("EDGE ",0)==0) 
             {
+                // EDGE u v [w] — optional weight (default 1)
                 std::istringstream ls(line);
                 string t;
                 int u,v,w=1;
@@ -303,6 +340,7 @@ void handle_client(int fd)
             }
             else if (line.rfind("PARAM ",0)==0) 
             {
+                // PARAM SRC|SINK|K value
                 std::istringstream ls(line);
                 string t,kstr; int val; ls>>t>>kstr>>val;
                 if(kstr=="SRC")src=val;
@@ -311,34 +349,39 @@ void handle_client(int fd)
             }
             else if (line.empty()) 
             {
-                continue; 
+                continue;           // ignore blank lines
             }
             else 
             {
+                // Unknown directive — remember error and stop parsing this request
                 parse_error=true;
                 perr = string("Unknown directive: ")+line;
                 break;
             }
         }
-    if (parse_error) 
-    {
-        send_response(fd, perr, false);
-        continue; 
-    }
-    if (V<=0) 
-    {
-        send_response(fd, "Missing/invalid V", false);
-        continue; 
-    }
-    if (randomFlag && (E<0)) 
-    {
-        send_response(fd, "Missing/invalid E", false);
-        continue; 
-    }
 
+        // 4) Basic validation of parsed values
+        if (parse_error) 
+        {
+            send_response(fd, perr, false);
+            continue; 
+        }
+        if (V<=0) 
+        {
+            send_response(fd, "Missing/invalid V", false);
+            continue; 
+        }
+        if (randomFlag && (E<0)) 
+        {
+            send_response(fd, "Missing/invalid E", false);
+            continue; 
+        }
+
+        // 5) Build the Graph according to the request (explicit edges or generated random)
         Graph g(V, directed!=0);
         if (!randomFlag) 
         {
+            // From explicit EDGE lines
             for (auto &e: edges)
             {
                 g.addEdge(e.u,e.v,e.w);
@@ -346,8 +389,8 @@ void handle_client(int fd)
         }
         else 
         {
-            // clamp E to max possible
-            int maxE = directed? V*(V-1) : V*(V-1)/2;
+            // RANDOM=1: clamp E to a feasible range, normalize weight range, then generate.
+            int maxE = directed? V*(V-1) : V*(V-1)/2; // maximum simple edges possible
             if (E>maxE)
             {
               E=maxE;  
@@ -363,6 +406,7 @@ void handle_client(int fd)
             g = generate_random_graph(V, E, seed, directed!=0, wmin, wmax);
         }
 
+        // 6) Prepare algorithm parameters map (only include provided keys)
         unordered_map<string,int> params;
         if(src>=0)
         {
@@ -377,15 +421,16 @@ void handle_client(int fd)
             params["K"]=k;
         }
 
+        // 7) Dispatch by ALG and send a response
         if (alg=="PREVIEW") 
         {
-            // Just return the generated/parsed graph as an edge list
+            // Return the graph as text edge list so the client can preview it.
             auto body = serialize_graph_edges(g, directed!=0);
             send_response(fd, body, true);
         }
         else if (alg=="ALL") 
         {
-            // Build the entire body and send once (simpler and robust)
+            // Compute all algorithms sequentially and send one consolidated OK block.
             std::ostringstream body;
             string r1 = run_alg_or_error("MAX_FLOW", g, params, directed!=0);
             string r2 = run_alg_or_error("SCC", g, params, directed!=0);
@@ -399,6 +444,7 @@ void handle_client(int fd)
         }
         else 
         {
+            // Single-algorithm request
             auto out = run_alg_or_error(alg, g, params, directed!=0);
             send_response(fd, out, true);
         }
@@ -407,6 +453,7 @@ void handle_client(int fd)
 
 int run_server(int argc, char *argv[])
 {
+    // 1) Determine listening port: default PORT, allow override via argv[1]
     int port = PORT;
     if (argc>=2) 
     {
@@ -416,14 +463,20 @@ int run_server(int argc, char *argv[])
             port=p;
         }
     }
+
+    // 2) Create a TCP socket (IPv4, stream)
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv<0)
     {
         std::perror("socket");
         return 1;
     }
+
+    // 3) Allow quick rebinding after restarts (SO_REUSEADDR)
     int opt=1;
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    // 4) Bind to 0.0.0.0:port (all local interfaces)
     sockaddr_in addr{};
     addr.sin_family=AF_INET;
     addr.sin_addr.s_addr=htonl(INADDR_ANY);
@@ -434,6 +487,8 @@ int run_server(int argc, char *argv[])
         close(srv);
         return 1; 
     }
+
+    // 5) Start listening with a backlog of 64 pending connections
     if (listen(srv, 64)<0)
     {
         std::perror("listen");
@@ -442,9 +497,12 @@ int run_server(int argc, char *argv[])
     }
     std::cout<<"[LF] Server listening on port "<<port<<" with Leader–Follower pool...\n";
 
-    // Start LF loop with N workers
+    // 6) Start the Leader–Follower loop with N worker threads
+    //    Use hardware_concurrency() when available, but at least 4 threads.
     int workers = std::max(4u, std::thread::hardware_concurrency());
     lf_server_loop(srv, workers);
+
+    // 7) Cleanup socket after the LF loop exits (on shutdown or fatal error)
     close(srv);
     return 0;
 }

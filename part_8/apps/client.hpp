@@ -13,6 +13,7 @@
 #include <tuple>
 #include <vector>
 #include <cstdlib>
+#include <cctype>
 
 #ifndef PORT
 #define PORT 9090

@@ -1,39 +1,92 @@
 #include "client.hpp"
 
+// Helper functions for printing a separator line
 void println_rule()
 {
     std::cout << "----------------------------------------\n"; 
 }
 
+/*
+        Helper function for prompting an integer input (robust parsing):
+        - Prompts with `msg` and reads a full line from stdin.
+        - Trims surrounding whitespace.
+        - Validation rules:
+            * Accepts only decimal digits 0–9; uses std::isdigit via a safe unsigned-char wrapper.
+            * Allows a leading '-' only if negatives are permitted by the range (minVal < 0).
+        - Parses with std::stoll in try/catch to guard overflow/invalid input.
+        - Checks the parsed value is within [minVal, maxVal] inclusive.
+        - On any failure prints an error ("Invalid number" or "Out of range") and reprompts.
+        - Returns the first valid integer.
+
+        Notes/limits:
+        - Only base-10 is accepted (no hex, no '+', no embedded spaces).
+        - Extremely large values outside 64-bit range are rejected as invalid.
+*/ 
 int prompt_int(const std::string& msg, int minVal, int maxVal)
 {
-     while(true)
-     {
-        std::cout<<msg; std::string s;
-        std::getline(std::cin,s);
-        if(s=="")
+    while (true)
+    {
+        std::cout << msg;
+        std::string s;
+        std::getline(std::cin, s);
+
+        // Trim whitespace
+        auto l = s.find_first_not_of(" \t\r\n");
+        if (l == std::string::npos) continue;
+        auto r = s.find_last_not_of(" \t\r\n");
+        s = s.substr(l, r - l + 1);
+
+        if (s.empty())
         {
-            continue;
+           continue; 
         } 
-        bool ok=std::all_of(s.begin(),s.end(),::isdigit);
-        if(!ok)
+
+        // Allow leading '-' only when negatives are allowed by range
+        const bool allowNegative = (minVal < 0);
+        // lambda function to check if a character is a digit:
+        auto is_digit = [](unsigned char c)
         {
-            std::cout<<"Invalid number\n";
+            return std::isdigit(c) != 0; 
+        };
+        bool ok;
+        if (allowNegative && s.size() > 1 && s[0] == '-')
+        {
+            ok = std::all_of(s.begin() + 1, s.end(), is_digit);
+        }
+        else
+        {
+            ok = std::all_of(s.begin(), s.end(), is_digit);
+        }
+        if (!ok)
+        {
+            std::cout << "Invalid number\n";
             continue;
         }
-        int v=std::stoi(s);
-        if(v<minVal||v>maxVal)
+
+        // Safe parse with bounds check
+        long long llv;
+        try 
         {
-            std::cout<<"Out of range\n";
+            llv = std::stoll(s);
+        }
+        catch (...) // catch all exceptions
+        {
+            std::cout << "Invalid number\n";
             continue;
-        } 
-        return v; 
-    } 
+        }
+        if (llv < static_cast<long long>(minVal) || llv > static_cast<long long>(maxVal))
+        {
+            std::cout << "Out of range\n";
+            continue;
+        }
+        return static_cast<int>(llv);
+    }
 }
 
 int run_client(int argc, char* argv[])
 {
-    int port = PORT; if (argc>=2) 
+    int port = PORT; // Default port is 9090
+    if (argc>=2) 
     {
         int p=std::atoi(argv[1]);
         if (p>0) port=p; 
@@ -153,7 +206,8 @@ int run_client(int argc, char* argv[])
         }
 
         // Now send ALL with the same parameters (same seed ⇒ same random graph)
-        std::ostringstream req2; req2<<"ALG ALL\n";
+        std::ostringstream req2;
+        req2<<"ALG ALL\n";
         req2<<"DIRECTED "<<directed<<"\n";
         req2<<"RANDOM 1\n";
         req2<<"V "<<V<<"\n";
@@ -188,7 +242,7 @@ int run_client(int argc, char* argv[])
         resp2.append(buf,buf+n);
         if(resp2.find("\nEND\n")!=std::string::npos|| resp2.rfind("\nEND")==resp2.size()-4)
         {
-        break;  
+            break;  
         }  
         }
         println_rule();
