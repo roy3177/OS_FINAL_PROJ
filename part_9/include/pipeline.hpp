@@ -47,4 +47,3 @@ struct Job
 // Pipeline lifecycle (to be implemented in server.cpp or a dedicated .cpp)
 void start_pipeline();
 void stop_pipeline();
-

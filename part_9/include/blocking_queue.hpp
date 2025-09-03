@@ -125,4 +125,3 @@ private:
 	bool closed_ = false;
 	std::size_t capacity_ = 0; // 0 == unbounded
 };
-
