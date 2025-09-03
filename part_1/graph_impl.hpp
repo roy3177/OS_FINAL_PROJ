@@ -22,15 +22,11 @@ The vertices number passed to adj creates a vector with empty vector lists,
 the size of the vertices we have(each vertex represent an empty list of its neighbors)
 */
 Graph(int vertices, bool isDirected) : 
-<<<<<<< HEAD
     V(vertices), E(0), directed(isDirected), adj(vertices), capacity(vertices, std::vector<int>(vertices, 0)) {
         if (vertices <= 0) {
             throw std::invalid_argument("number of vertices must be positive");
         }
     }
-=======
-    V(vertices), E(0), directed(isDirected), adj(vertices), capacity(vertices, std::vector<int>(vertices, 0)) {}
->>>>>>> 72e67a084588fb1a6763f419837d84db6094d906
 
     // Add edge (u -> v)
     void addEdge(int u, int v, int cap = 1); // default capacity is 1 if not specified
