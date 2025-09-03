@@ -1,6 +1,5 @@
 #include "server.hpp"
 
-
 // Forward declarations for helpers used in pipeline stages
 static std::string run_alg_or_error(const std::string& alg, const Graph& g,
                                     const std::unordered_map<std::string,int>& params,
@@ -12,7 +11,8 @@ using std::vector;
 using std::unordered_map;
 
 // -------------------- Pipeline implementation --------------------
-namespace {
+namespace 
+{
     // Queues between stages
     BlockingQueue<Job> q_max_flow;
     BlockingQueue<Job> q_scc;
@@ -117,8 +117,10 @@ void start_pipeline()
 {
     bool expected = false;
     if (!pipeline_started.compare_exchange_strong(expected, true))
+    {
         return; // already started
-
+    }
+        
     std::thread(stage_max_flow_loop).detach();
     std::thread(stage_scc_loop).detach();
     std::thread(stage_mst_loop).detach();
@@ -560,27 +562,37 @@ void handle_client(int fd)
         job.params = std::move(params);
         job.directed = (directed!=0);
 
-        if (alg == "PREVIEW") job.kind = AlgKind::PREVIEW;
-        else if (alg == "ALL") job.kind = AlgKind::ALL;
-        else if (alg == "MAX_FLOW") job.kind = AlgKind::SINGLE_MAX_FLOW;
-        else if (alg == "SCC") job.kind = AlgKind::SINGLE_SCC;
-        else if (alg == "MST") job.kind = AlgKind::SINGLE_MST;
-        else if (alg == "CLIQUES") job.kind = AlgKind::SINGLE_CLIQUES;
-        else {
+        if (alg == "PREVIEW"){ job.kind = AlgKind::PREVIEW; }
+        else if (alg == "ALL"){ job.kind = AlgKind::ALL; }
+        else if (alg == "MAX_FLOW"){ job.kind = AlgKind::SINGLE_MAX_FLOW; }
+        else if (alg == "SCC"){ job.kind = AlgKind::SINGLE_SCC; }
+        else if (alg == "MST"){ job.kind = AlgKind::SINGLE_MST; }
+        else if (alg == "CLIQUES"){ job.kind = AlgKind::SINGLE_CLIQUES; }
+        else 
+        {
             send_response(fd, "Unsupported algorithm", false);
             continue;
         }
 
         // Enqueue to appropriate entry queue
-        if (job.kind == AlgKind::PREVIEW) {
+        if (job.kind == AlgKind::PREVIEW) 
+        {
             q_agg.push(std::move(job)); // aggregator will serialize and send
-        } else if (job.kind == AlgKind::SINGLE_MAX_FLOW || job.kind == AlgKind::ALL) {
+        }
+        else if (job.kind == AlgKind::SINGLE_MAX_FLOW || job.kind == AlgKind::ALL) 
+        {
             q_max_flow.push(std::move(job));
-        } else if (job.kind == AlgKind::SINGLE_SCC) {
+        }
+        else if (job.kind == AlgKind::SINGLE_SCC) 
+        {
             q_scc.push(std::move(job));
-        } else if (job.kind == AlgKind::SINGLE_MST) {
+        }
+        else if (job.kind == AlgKind::SINGLE_MST) 
+        {
             q_mst.push(std::move(job));
-        } else if (job.kind == AlgKind::SINGLE_CLIQUES) {
+        }
+        else if (job.kind == AlgKind::SINGLE_CLIQUES) 
+        {
             q_cliques.push(std::move(job));
         }
     }
