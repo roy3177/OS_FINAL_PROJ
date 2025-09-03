@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 CXX      = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O0 -g -fprofile-arcs -ftest-coverage
 LDFLAGS  = -fprofile-arcs -ftest-coverage
@@ -18,10 +19,23 @@ main_case2.o: main_case2.cpp graph_impl.hpp
 
 graph_impl.o: graph_impl.cpp graph_impl.hpp
 	$(CXX) $(CXXFLAGS) -c $<
+=======
+CXX=g++
+CXXFLAGS = -std=c++17 -Wall -Wextra --coverage
+
+all: main_case1 main_case2
+
+main_case1: main_case1.cpp graph_impl.cpp
+	$(CXX) $(CXXFLAGS) -o main_case1 main_case1.cpp graph_impl.cpp
+
+main_case2: main_case2.cpp graph_impl.cpp
+	$(CXX) $(CXXFLAGS) -o main_case2 main_case2.cpp graph_impl.cpp
+>>>>>>> 72e67a084588fb1a6763f419837d84db6094d906
 
 gcov: all
 	./main_case1
 	./main_case2
+<<<<<<< HEAD
 	# generate gcov reports
 	gcov -b -c -o . graph_impl.cpp main_case1.cpp main_case2.cpp
 
@@ -42,3 +56,14 @@ clean:
 	rm -f main_case1 main_case2 *.o *.gcno *.gcda *.gcov
 
 .PHONY: all clean gcov
+=======
+	gcov main_case1-main_case1.gcno
+	gcov main_case2-main_case2.gcno
+	gcov main_case1-graph_impl.gcno
+	gcov main_case2-graph_impl.gcno
+
+clean:
+	rm -f main_case1 main_case2 *.gcno *.gcda *.gcov
+
+.PHONY: all clean gcov
+>>>>>>> 72e67a084588fb1a6763f419837d84db6094d906

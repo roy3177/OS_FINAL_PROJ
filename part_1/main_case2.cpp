@@ -3,6 +3,7 @@
 
 int main() 
 {
+<<<<<<< HEAD
     // ===== Undirected graph =====
     Graph g(5, false);
 
@@ -11,6 +12,15 @@ int main()
     g.addEdge(0, 4);
 
     // Invalid edge (should throw out_of_range)
+=======
+    Graph g(5, false);
+
+    // Valid edges
+    g.addEdge(0, 1);
+    g.addEdge(0, 4);
+
+    // Invalid edge (should throw)
+>>>>>>> 72e67a084588fb1a6763f419837d84db6094d906
     try {
         g.addEdge(-1, 2);
     } catch (const std::out_of_range& e) {
@@ -23,13 +33,18 @@ int main()
     for (int v : neighbors) std::cout << v << " ";
     std::cout << std::endl;
 
+<<<<<<< HEAD
     // Invalid get_neighbors (should throw out_of_range)
+=======
+    // Invalid get_neighbors (should throw)
+>>>>>>> 72e67a084588fb1a6763f419837d84db6094d906
     try {
         g.get_neighbors(10);
     } catch (const std::out_of_range& e) {
         std::cout << "Caught exception: " << e.what() << std::endl;
     }
 
+<<<<<<< HEAD
     // Test getters
     std::cout << "Vertices: " << g.get_vertices() << std::endl;
     std::cout << "Edges: " << g.get_edges() << std::endl;
@@ -70,3 +85,7 @@ int main()
 
     return 0;
 }
+=======
+    return 0;
+}
+>>>>>>> 72e67a084588fb1a6763f419837d84db6094d906

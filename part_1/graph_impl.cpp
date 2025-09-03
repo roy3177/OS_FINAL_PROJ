@@ -2,6 +2,7 @@
 
 void Graph::addEdge(int u, int v, int cap) 
 {
+<<<<<<< HEAD
     if (u < 0 || u >= V || v < 0 || v >= V) {
         throw std::out_of_range("Vertex index out of range");
     }
@@ -9,6 +10,8 @@ void Graph::addEdge(int u, int v, int cap)
         throw std::invalid_argument("capacity must be non-negative");
     }
 
+=======
+>>>>>>> 72e67a084588fb1a6763f419837d84db6094d906
     adj[u].push_back(v);
     capacity[u][v] = cap;
     if (!directed) 
