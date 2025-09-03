@@ -17,11 +17,16 @@
 #include <mutex>
 #include <condition_variable>
 #include <future>
+#include <atomic>
 
 #include "../../part_1/graph_impl.hpp"
 // Reuse Part 8's random graph interface; implementation will be linked via makefile sources.
 #include "../../part_8/include/random_graph.hpp"
 #include "../../part_7/strategy_factory/AlgorithmFactory.hpp"
+
+// Pipeline includes:
+#include "../include/blocking_queue.hpp"
+#include "../include/pipeline.hpp"
 
 #ifndef PORT
 #define PORT 9090

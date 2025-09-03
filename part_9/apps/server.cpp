@@ -1,8 +1,140 @@
 #include "server.hpp"
 
+
+// Forward declarations for helpers used in pipeline stages
+static std::string run_alg_or_error(const std::string& alg, const Graph& g,
+                                    const std::unordered_map<std::string,int>& params,
+                                    bool requestedDirected);
+static std::string serialize_graph_edges(const Graph& g, bool directed);
+
 using std::string;
 using std::vector;
 using std::unordered_map;
+
+// -------------------- Pipeline implementation --------------------
+namespace {
+    // Queues between stages
+    BlockingQueue<Job> q_max_flow;
+    BlockingQueue<Job> q_scc;
+    BlockingQueue<Job> q_mst;
+    BlockingQueue<Job> q_cliques;
+    BlockingQueue<Job> q_agg;
+
+    // Stage loops
+    void stage_max_flow_loop()
+    {
+        Job job;
+        while (q_max_flow.pop(job))
+        {
+            job.res_max_flow = run_alg_or_error("MAX_FLOW", job.graph, job.params, job.directed);
+            // Route next
+            if (job.kind == AlgKind::SINGLE_MAX_FLOW) q_agg.push(std::move(job));
+            else q_scc.push(std::move(job));
+        }
+    }
+
+    void stage_scc_loop()
+    {
+        Job job;
+        while (q_scc.pop(job))
+        {
+            job.res_scc = run_alg_or_error("SCC", job.graph, job.params, job.directed);
+            if (job.kind == AlgKind::SINGLE_SCC) q_agg.push(std::move(job));
+            else q_mst.push(std::move(job));
+        }
+    }
+
+    void stage_mst_loop()
+    {
+        Job job;
+        while (q_mst.pop(job))
+        {
+            job.res_mst = run_alg_or_error("MST", job.graph, job.params, job.directed);
+            if (job.kind == AlgKind::SINGLE_MST) q_agg.push(std::move(job));
+            else q_cliques.push(std::move(job));
+        }
+    }
+
+    void stage_cliques_loop()
+    {
+        Job job;
+        while (q_cliques.pop(job))
+        {
+            job.res_cliques = run_alg_or_error("CLIQUES", job.graph, job.params, job.directed);
+            // Last stage for ALL and SINGLE_CLIQUES
+            q_agg.push(std::move(job));
+        }
+    }
+
+    void stage_aggregator_loop()
+    {
+        Job job;
+        while (q_agg.pop(job))
+        {
+            if (job.kind == AlgKind::PREVIEW)
+            {
+                auto body = serialize_graph_edges(job.graph, job.directed);
+                send_response(job.fd, body, true);
+                continue;
+            }
+
+            if (job.kind == AlgKind::SINGLE_MAX_FLOW)
+            {
+                send_response(job.fd, job.res_max_flow, true);
+                continue;
+            }
+            if (job.kind == AlgKind::SINGLE_SCC)
+            {
+                send_response(job.fd, job.res_scc, true);
+                continue;
+            }
+            if (job.kind == AlgKind::SINGLE_MST)
+            {
+                send_response(job.fd, job.res_mst, true);
+                continue;
+            }
+            if (job.kind == AlgKind::SINGLE_CLIQUES)
+            {
+                send_response(job.fd, job.res_cliques, true);
+                continue;
+            }
+
+            // ALL
+            std::ostringstream body;
+            body << "RESULT MAX_FLOW=" << job.res_max_flow << "\n";
+            body << "RESULT SCC_COUNT=" << job.res_scc << "\n";
+            body << "RESULT MST_WEIGHT=" << job.res_mst << "\n";
+            body << "RESULT CLIQUES=" << job.res_cliques << "\n";
+            send_response(job.fd, body.str(), true);
+        }
+    }
+
+    // Threads
+    std::atomic<bool> pipeline_started{false};
+}
+
+void start_pipeline()
+{
+    bool expected = false;
+    if (!pipeline_started.compare_exchange_strong(expected, true))
+        return; // already started
+
+    std::thread(stage_max_flow_loop).detach();
+    std::thread(stage_scc_loop).detach();
+    std::thread(stage_mst_loop).detach();
+    std::thread(stage_cliques_loop).detach();
+    std::thread(stage_aggregator_loop).detach();
+}
+
+void stop_pipeline()
+{
+    // Gracefully close queues to let threads exit if no more producers.
+    q_max_flow.close();
+    q_scc.close();
+    q_mst.close();
+    q_cliques.close();
+    q_agg.close();
+}
 
 // Helper function for receiving all lines from a socket
 bool recv_all_lines(int fd, std::string &out)
@@ -421,32 +553,35 @@ void handle_client(int fd)
             params["K"]=k;
         }
 
-        // 7) Dispatch by ALG and send a response
-        if (alg=="PREVIEW") 
-        {
-            // Return the graph as text edge list so the client can preview it.
-            auto body = serialize_graph_edges(g, directed!=0);
-            send_response(fd, body, true);
+        // 7) Map ALG to pipeline kind and enqueue job
+        Job job;
+        job.fd = fd;
+        job.graph = std::move(g);
+        job.params = std::move(params);
+        job.directed = (directed!=0);
+
+        if (alg == "PREVIEW") job.kind = AlgKind::PREVIEW;
+        else if (alg == "ALL") job.kind = AlgKind::ALL;
+        else if (alg == "MAX_FLOW") job.kind = AlgKind::SINGLE_MAX_FLOW;
+        else if (alg == "SCC") job.kind = AlgKind::SINGLE_SCC;
+        else if (alg == "MST") job.kind = AlgKind::SINGLE_MST;
+        else if (alg == "CLIQUES") job.kind = AlgKind::SINGLE_CLIQUES;
+        else {
+            send_response(fd, "Unsupported algorithm", false);
+            continue;
         }
-        else if (alg=="ALL") 
-        {
-            // Compute all algorithms sequentially and send one consolidated OK block.
-            std::ostringstream body;
-            string r1 = run_alg_or_error("MAX_FLOW", g, params, directed!=0);
-            string r2 = run_alg_or_error("SCC", g, params, directed!=0);
-            string r3 = run_alg_or_error("MST", g, params, directed!=0);
-            string r4 = run_alg_or_error("CLIQUES", g, params, directed!=0);
-            body << "RESULT MAX_FLOW=" << r1 << "\n";
-            body << "RESULT SCC_COUNT=" << r2 << "\n";
-            body << "RESULT MST_WEIGHT=" << r3 << "\n";
-            body << "RESULT CLIQUES=" << r4 << "\n";
-            send_response(fd, body.str(), true);
-        }
-        else 
-        {
-            // Single-algorithm request
-            auto out = run_alg_or_error(alg, g, params, directed!=0);
-            send_response(fd, out, true);
+
+        // Enqueue to appropriate entry queue
+        if (job.kind == AlgKind::PREVIEW) {
+            q_agg.push(std::move(job)); // aggregator will serialize and send
+        } else if (job.kind == AlgKind::SINGLE_MAX_FLOW || job.kind == AlgKind::ALL) {
+            q_max_flow.push(std::move(job));
+        } else if (job.kind == AlgKind::SINGLE_SCC) {
+            q_scc.push(std::move(job));
+        } else if (job.kind == AlgKind::SINGLE_MST) {
+            q_mst.push(std::move(job));
+        } else if (job.kind == AlgKind::SINGLE_CLIQUES) {
+            q_cliques.push(std::move(job));
         }
     }
 }
@@ -497,12 +632,16 @@ int run_server(int argc, char *argv[])
     }
     std::cout<<"[LF] Server listening on port "<<port<<" with Leader–Follower pool...\n";
 
+    // Start pipeline threads once
+    start_pipeline();
+
     // 6) Start the Leader–Follower loop with N worker threads
     //    Use hardware_concurrency() when available, but at least 4 threads.
     int workers = std::max(4u, std::thread::hardware_concurrency());
     lf_server_loop(srv, workers);
 
     // 7) Cleanup socket after the LF loop exits (on shutdown or fatal error)
+    stop_pipeline();
     close(srv);
     return 0;
 }
