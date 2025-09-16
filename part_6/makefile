@@ -1,18 +1,74 @@
-CXX=g++
-CXXFLAGS=-std=c++17 -Wall -Wextra
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -O0 -g --coverage -fprofile-arcs -ftest-coverage
+LDFLAGS = --coverage
 
-SRCS_SERVER=server.cpp ../part_1/graph_impl.cpp ../part_2/euler_circle.cpp
-SRCS_CLIENT=client.cpp
+SRCS_SERVER = server.cpp
+SRCS_CLIENT = client.cpp
+SRCS_UTIL   = ../part_1/graph_impl.cpp ../part_2/euler_circle.cpp
 
-all: server client
+OBJS_SERVER = server.o graph_impl.o euler_circle.o
+OBJS_CLIENT = client.o
 
-server: $(SRCS_SERVER) server.hpp
-	$(CXX) $(CXXFLAGS) -o server $(SRCS_SERVER)
+BIN_SERVER = server
+BIN_CLIENT = client
 
-client: $(SRCS_CLIENT) client.hpp
-	$(CXX) $(CXXFLAGS) -o client $(SRCS_CLIENT)
+.PHONY: all clean gcov valgrind memcheck callgrind helgrind
 
+all: $(BIN_SERVER) $(BIN_CLIENT)
+
+server.o: server.cpp server.hpp
+	$(CXX) $(CXXFLAGS) -c server.cpp -o $@
+
+client.o: client.cpp client.hpp
+	$(CXX) $(CXXFLAGS) -c client.cpp -o $@
+
+graph_impl.o: ../part_1/graph_impl.cpp
+	$(CXX) -std=c++17 -Wall -Wextra -O0 -g -c ../part_1/graph_impl.cpp -o $@
+
+euler_circle.o: ../part_2/euler_circle.cpp
+	$(CXX) -std=c++17 -Wall -Wextra -O0 -g -c ../part_2/euler_circle.cpp -o $@
+
+# לינקים
+$(BIN_SERVER): $(OBJS_SERVER)
+	$(CXX) $(OBJS_SERVER) $(LDFLAGS) -o $@
+
+$(BIN_CLIENT): $(OBJS_CLIENT)
+	$(CXX) $(OBJS_CLIENT) $(LDFLAGS) -o $@
+
+# ===== GCOV =====
+gcov: all
+	./run_tests.sh
+	@echo "=== GCOV REPORTS (Server + Client Only) ==="
+	@echo "--- Client ---"
+	gcov -b -c client.cpp -o . || true
+	@echo "--- Server ---"
+	gcov -b -c server.cpp -o . || true
+
+# ===== Valgrind =====
+valgrind: memcheck
+
+memcheck: $(BIN_SERVER) $(BIN_CLIENT)
+	@echo "== Valgrind Memcheck =="
+	./server > /dev/null 2>&1 &
+	sleep 0.2
+	printf "3\n1\n1 2\nn\n" | valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./client
+
+callgrind: $(BIN_SERVER) $(BIN_CLIENT)
+	@echo "== Valgrind Callgrind =="
+	./server > /dev/null 2>&1 &
+	sleep 0.2
+	printf "4\n4\n0 1\n1 2\n2 3\n3 0\nn\n" | valgrind --tool=callgrind --callgrind-out-file=callgrind.out ./client
+	@echo "Use kcachegrind to view: callgrind.out"
+
+helgrind: $(BIN_SERVER) $(BIN_CLIENT)
+	@echo "== Valgrind Helgrind =="
+	./server > /dev/null 2>&1 &
+	sleep 0.2
+	printf "3\n1\n1 2\nn\n" | valgrind --tool=helgrind ./client
+
+# ===== Clean =====
 clean:
-	rm -f server client
-
-.PHONY: all clean
+	rm -f $(BIN_SERVER) $(BIN_CLIENT) *.o *.gcno *.gcda *.gcov \
+	      server-*.gcno server-*.gcda client-*.gcno client-*.gcda \
+	      callgrind.out* cachegrind.out* gmon.out gprof_report.txt
+	rm -rf build

@@ -48,6 +48,26 @@ void run_server()
     // Main server loop to accept and handle client connections:
 	while (true) 
     {
+
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(server_fd, &readfds);
+
+        struct timeval timeout;
+        timeout.tv_sec = 30;
+        timeout.tv_usec = 0;
+
+        int activity = select(server_fd + 1, &readfds, nullptr, nullptr, &timeout);
+
+        if (activity == 0) {
+            std::cout << "No client connected for 30 seconds. Server shutting down." << std::endl;
+            break;
+        }
+        if (activity < 0) {
+            perror("select");
+            break;
+        }
+
         // We create a new socket for each client connection:
         new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen);
 		
@@ -57,7 +77,7 @@ void run_server()
         if (new_socket < 0) 
         {
 			perror("accept");
-			exit(EXIT_FAILURE);
+			return;
 		}
         // Read data from the client:
 		int valread = read(new_socket, buffer, 4096);
@@ -69,7 +89,7 @@ void run_server()
         {
             std::cout << "Client exited." << std::endl;
             close(new_socket);
-            continue;
+            break;
         }
 		// Parse input: first line = vertices, second = edges, next lines = edge list
         std::istringstream iss(input);
