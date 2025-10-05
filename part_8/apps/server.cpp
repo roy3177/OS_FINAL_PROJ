@@ -1,5 +1,7 @@
 #include "server.hpp"
 
+int g_listen_fd = -1;
+
 using std::string;
 using std::vector;
 using std::unordered_map;
@@ -105,6 +107,9 @@ void lf_server_loop(int srv_fd, int workers)
                 {
                     // Interrupted by a signal; loop and try again.
                     continue;
+                }
+                if(g_shutdown){
+                    return; // Graceful exit on shutdown request.
                 }
                 // Hard error: log and end this worker thread (others keep running).
                 std::perror("accept");
@@ -248,7 +253,26 @@ void handle_client(int fd)
             return; 
         }
 
-        // 2) Immediate shutdown command from client
+        //2)General logout of the server:
+        if (req.find("SHUTDOWN") != std::string::npos) {
+            send_response(fd, "BYE", true);
+            close(fd);
+
+            {   //Mark that the lock is in shutdown mode:
+                std::lock_guard<std::mutex> lk(g_mu);
+                g_shutdown = true;
+            }
+    
+            if (g_listen_fd >= 0) {
+                shutdown(g_listen_fd, SHUT_RDWR); 
+            }
+
+            g_cv.notify_all(); 
+            return;            
+        }
+
+
+        // 3) Immediate shutdown command from client
         if (req == "EXIT\n" || req.find("\nEXIT\n") != string::npos) 
         {
             send_response(fd, "BYE", true);
@@ -377,76 +401,96 @@ void handle_client(int fd)
             continue; 
         }
 
-        // 5) Build the Graph according to the request (explicit edges or generated random)
-        Graph g(V, directed!=0);
-        if (!randomFlag) 
+        // 5–7) Build + params + dispatch, with validation and exception safety
+        try
         {
-            // From explicit EDGE lines
-            for (auto &e: edges)
+            // 5) Build the Graph according to the request (explicit edges or generated random)
+            Graph g(V, directed!=0);
+
+            if (!randomFlag)
             {
-                g.addEdge(e.u,e.v,e.w);
+                // Validate all explicit edges BEFORE addEdge to avoid abort/throw inside Graph
+                bool bad = false;
+                for (const auto &e : edges)
+                {
+                    if (e.u < 0 || e.v < 0 || e.u >= V || e.v >= V)
+                    {
+                        send_response(fd, "Invalid EDGE vertex (out of range)", false);
+                        bad = true;
+                        break;
+                    }
+                    if (e.w <= 0)
+                    {
+                        send_response(fd, "Invalid EDGE weight (must be >=1)", false);
+                        bad = true;
+                        break;
+                    }
+                }
+                if (bad)
+                {
+                    // Skip this request; go wait for the next one on the same connection
+                    continue;
+                }
+
+                // Now it's safe to add
+                for (const auto &e : edges)
+                {
+                    g.addEdge(e.u, e.v, e.w);
+                }
+            }
+            else
+            {
+                // RANDOM=1: clamp E to a feasible range, normalize weight range, then generate.
+                int maxE = directed ? V*(V-1) : V*(V-1)/2; // maximum simple edges possible
+                if (E > maxE) { E = maxE; }
+                if (E < 0)     { E = 0;    }
+                if (wmax < wmin) { std::swap(wmax, wmin); }
+                g = generate_random_graph(V, E, seed, directed!=0, wmin, wmax);
+            }
+
+            // 6) Prepare algorithm parameters map (only include provided keys)
+            unordered_map<string,int> params;
+            if (src  >= 0) { params["SRC"]  = src;  }
+            if (sink >= 0) { params["SINK"] = sink; }
+            if (k    >= 0) { params["K"]    = k;    }
+
+            // 7) Dispatch by ALG and send a response
+            if (alg == "PREVIEW")
+            {
+                // Return the graph as text edge list so the client can preview it.
+                auto body = serialize_graph_edges(g, directed!=0);
+                send_response(fd, body, true);
+            }
+            else if (alg == "ALL")
+            {
+                // Compute all algorithms sequentially and send one consolidated OK block.
+                std::ostringstream body;
+                string r1 = run_alg_or_error("MAX_FLOW",  g, params, directed!=0);
+                string r2 = run_alg_or_error("SCC",       g, params, directed!=0);
+                string r3 = run_alg_or_error("MST",       g, params, directed!=0);
+                string r4 = run_alg_or_error("CLIQUES",   g, params, directed!=0);
+                body << "RESULT MAX_FLOW="   << r1 << "\n";
+                body << "RESULT SCC_COUNT="  << r2 << "\n";
+                body << "RESULT MST_WEIGHT=" << r3 << "\n";
+                body << "RESULT CLIQUES="    << r4 << "\n";
+                send_response(fd, body.str(), true);
+            }
+            else
+            {
+                // Single-algorithm request
+                auto out = run_alg_or_error(alg, g, params, directed!=0);
+                send_response(fd, out, true);
             }
         }
-        else 
+        catch (const std::exception& ex)
         {
-            // RANDOM=1: clamp E to a feasible range, normalize weight range, then generate.
-            int maxE = directed? V*(V-1) : V*(V-1)/2; // maximum simple edges possible
-            if (E>maxE)
-            {
-              E=maxE;  
-            } 
-            if (E<0)
-            {
-              E=0;  
-            } 
-            if (wmax < wmin)
-            {
-               std::swap(wmax, wmin); 
-            } 
-            g = generate_random_graph(V, E, seed, directed!=0, wmin, wmax);
+            // Never crash the server thread because of bad input/logic
+            std::ostringstream er; er << "Exception: " << ex.what();
+            send_response(fd, er.str(), false);
         }
-
-        // 6) Prepare algorithm parameters map (only include provided keys)
-        unordered_map<string,int> params;
-        if(src>=0)
+        catch (...)
         {
-            params["SRC"]=src;
-        }
-        if(sink>=0)
-        {
-            params["SINK"]=sink;
-        }
-        if(k>=0)
-        {
-            params["K"]=k;
-        }
-
-        // 7) Dispatch by ALG and send a response
-        if (alg=="PREVIEW") 
-        {
-            // Return the graph as text edge list so the client can preview it.
-            auto body = serialize_graph_edges(g, directed!=0);
-            send_response(fd, body, true);
-        }
-        else if (alg=="ALL") 
-        {
-            // Compute all algorithms sequentially and send one consolidated OK block.
-            std::ostringstream body;
-            string r1 = run_alg_or_error("MAX_FLOW", g, params, directed!=0);
-            string r2 = run_alg_or_error("SCC", g, params, directed!=0);
-            string r3 = run_alg_or_error("MST", g, params, directed!=0);
-            string r4 = run_alg_or_error("CLIQUES", g, params, directed!=0);
-            body << "RESULT MAX_FLOW=" << r1 << "\n";
-            body << "RESULT SCC_COUNT=" << r2 << "\n";
-            body << "RESULT MST_WEIGHT=" << r3 << "\n";
-            body << "RESULT CLIQUES=" << r4 << "\n";
-            send_response(fd, body.str(), true);
-        }
-        else 
-        {
-            // Single-algorithm request
-            auto out = run_alg_or_error(alg, g, params, directed!=0);
-            send_response(fd, out, true);
+            send_response(fd, "Exception: unknown", false);
         }
     }
 }
@@ -495,6 +539,7 @@ int run_server(int argc, char *argv[])
         close(srv);
         return 1;
     }
+    g_listen_fd = srv;
     std::cout<<"[LF] Server listening on port "<<port<<" with Leader–Follower pool...\n";
 
     // 6) Start the Leader–Follower loop with N worker threads
@@ -511,3 +556,4 @@ int main(int argc, char* argv[])
 {
     return run_server(argc, argv);
 }
+

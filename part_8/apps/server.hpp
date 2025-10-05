@@ -22,9 +22,15 @@
 #include "../include/random_graph.hpp"
 #include "../../part_7/strategy_factory/AlgorithmFactory.hpp"
 
+
+
 #ifndef PORT
 #define PORT 9090
 #endif
+
+// Use it for break SHUTDOWN when we using accept():
+extern int g_listen_fd;
+
 
 bool recv_all_lines(int fd, std::string &out);
 void send_response(int fd, const std::string &body, bool ok = true);
