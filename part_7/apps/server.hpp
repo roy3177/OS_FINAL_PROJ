@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 #include <cstdlib>
-
+#include <csignal>
 #include "Finding_Max_Flow.hpp"
 #include "../part_1/graph_impl.hpp"
 #include "../strategy_factory/AlgorithmFactory.hpp"

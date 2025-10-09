@@ -129,8 +129,9 @@ int run_client(int argc, char* argv[])
 
         int directed = prompt_int("Directed? 1=yes 0=no: ", 0, 1);
         int V = prompt_int("V (>=2): ", 2, 1000000);
-        int maxE = directed? V*(V-1) : V*(V-1)/2; if(maxE<0) maxE=0; // avoid overflow in extreme
-        int E = prompt_int("E (0.."+std::to_string(maxE)+"): ", 0, std::max(0,maxE));
+        int maxE = directed ? V*(V-1) : V*(V-1)/2;
+        if (maxE < 0) maxE = 0;
+        int E = prompt_int("E (0.." + std::to_string(maxE) + "): ", 0, std::max(0, maxE));
         int SRC=-1,SINK=-1,K=-1;
         int WMIN = prompt_int("Min edge weight (>=1): ", 1, 1000000000);
         int WMAX = prompt_int("Max edge weight (>=Min): ", WMIN, 1000000000);

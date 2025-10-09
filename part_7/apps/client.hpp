@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <poll.h>
 #include <cstdlib>
 
 #define PORT 9090
@@ -21,3 +22,4 @@
 void println_rule();
 int prompt_int(const std::string& msg, int minVal, int maxVal);
 int run_client(int argc, char* argv[]);
+bool getline_with_timeout(std::string &out, int timeout_ms);

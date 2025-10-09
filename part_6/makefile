@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O0 -g --coverage -fprofile-arcs -ftest-coverage
-LDFLAGS = --coverage
+LDFLAGS = --coverage -pthread
 
 SRCS_SERVER = server.cpp
 SRCS_CLIENT = client.cpp
@@ -28,7 +28,7 @@ graph_impl.o: ../part_1/graph_impl.cpp
 euler_circle.o: ../part_2/euler_circle.cpp
 	$(CXX) -std=c++17 -Wall -Wextra -O0 -g -c ../part_2/euler_circle.cpp -o $@
 
-# לינקים
+
 $(BIN_SERVER): $(OBJS_SERVER)
 	$(CXX) $(OBJS_SERVER) $(LDFLAGS) -o $@
 

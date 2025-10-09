@@ -1,5 +1,7 @@
 #include "server.hpp"
 
+static int g_server_fd = -1;
+
 // Helper function for receiving all lines from a socket
 bool recv_all_lines(int fd, std::string &out) 
 {
@@ -59,6 +61,8 @@ int run_server(int argc, char *argv[])
 
     // Create socket:
     int srv = socket(AF_INET, SOCK_STREAM, 0);
+    g_server_fd = srv;
+
     if (srv < 0) 
     {
         std::perror("socket");
@@ -125,14 +129,30 @@ int run_server(int argc, char *argv[])
                 break;
             }
 
-            // Quick EXIT support:
-            if (req == "EXIT\n" || req.find("\nEXIT\n") != std::string::npos) 
-            {
-                send_response(fd, "BYE", true);
-                close(fd);
-                std::cout << "Client disconnected (EXIT).\n";
-                break;
-            }
+          auto has_cmd = [](const std::string& s, const char* cmd) {
+            std::string c(cmd);
+            if (s.rfind(c + "\n", 0) == 0) return true;                
+            if (s == c + "\n")        return true;
+            if (s.find("\n" + c + "\n") != std::string::npos) return true;
+            return false;
+        };
+
+        if (has_cmd(req, "EXIT")) {
+            send_response(fd, "BYE", true);
+            close(fd);
+            std::cout << "Client disconnected (EXIT).\n";
+            break;
+        }
+
+        if (has_cmd(req, "SHUTDOWN")) {
+            send_response(fd, "Server shutting down", true);
+            close(fd);
+            close(srv);
+            std::cout << "Server shutting down on SHUTDOWN request.\n";
+            return 0; 
+        }
+
+
 
             // Parse request
             std::istringstream iss(req);
@@ -327,7 +347,15 @@ int run_server(int argc, char *argv[])
     return 0;
 }
 
-int main(int argc, char *argv[]) 
-{
+void handle_signal(int) {
+    std::cout << "\n[Signal] Shutting down server..." << std::endl;
+    if (g_server_fd >= 0) close(g_server_fd);
+    exit(0);   
+}
+
+int main(int argc, char *argv[]) {
+    std::signal(SIGINT,  handle_signal);  // Ctrl+C
+    std::signal(SIGTERM, handle_signal);  // kill command
     return run_server(argc, argv);
 }
+

@@ -1,0 +1,16 @@
+1      # mode=ALL
+0      # directed
+a      # V -> Invalid number
+1      # V -> Out of range (min 2)
+2      # V ok
+5      # E -> Out of range 
+0      # E ok
+0      # WMIN -> Out of range (min 1)
+1      # WMIN ok
+0      # WMAX -> Out of range (min=WMIN=1)
+1      # WMAX ok
+-      # SRC -> Invalid number 
+-1     # SRC skip
+-1     # K skip
+0      # Do NOT run ALL after preview
+0      # Exit

@@ -1,10 +1,25 @@
 #include "server.hpp"
+extern "C" void __gcov_flush(void) __attribute__((weak));
+
+static std::atomic_flag g_flush_once = ATOMIC_FLAG_INIT;
+
+static inline void gcov_flush_safe_once() {
+    if (g_flush_once.test_and_set()) {
+        return; // Already done/in progress, do not enter again
+    }
+    if (__gcov_flush) {
+        __gcov_flush();
+    }
+}
+
 
 // Forward declarations for helpers used in pipeline stages
 static std::string run_alg_or_error(const std::string& alg, const Graph& g,
                                     const std::unordered_map<std::string,int>& params,
                                     bool requestedDirected);
 static std::string serialize_graph_edges(const Graph& g, bool directed);
+static bool peer_already_closed_write(int fd);
+static int g_listen_fd = -1;
 
 using std::string;
 using std::vector;
@@ -13,6 +28,14 @@ using std::unordered_map;
 // -------------------- Pipeline implementation --------------------
 namespace 
 {
+    // Leader–Follower state:
+
+    std::mutex g_mu;
+    std::condition_variable g_cv;
+    bool g_hasLeader = false;
+    bool g_shutdown = false;
+
+
     // Queues between stages
     BlockingQueue<Job> q_max_flow;
     BlockingQueue<Job> q_scc;
@@ -23,91 +46,148 @@ namespace
     // Stage loops
     void stage_max_flow_loop()
     {
-        Job job;
-        while (q_max_flow.pop(job))
-        {
-            job.res_max_flow = run_alg_or_error("MAX_FLOW", job.graph, job.params, job.directed);
-            // Route next
-            if (job.kind == AlgKind::SINGLE_MAX_FLOW) q_agg.push(std::move(job));
-            else q_scc.push(std::move(job));
+        try {
+            Job job;
+            while (q_max_flow.pop(job))
+            {
+                job.res_max_flow = run_alg_or_error("MAX_FLOW", job.graph, job.params, job.directed);
+                if (job.kind == AlgKind::SINGLE_MAX_FLOW) q_agg.push(std::move(job));
+                else q_scc.push(std::move(job));
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[max_flow] exception: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "[max_flow] unknown exception\n";
         }
     }
+
+    static void set_shutdown_and_wake() {
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            g_shutdown = true;
+        }
+        g_cv.notify_all();
+        if (g_listen_fd >= 0) {
+            shutdown(g_listen_fd, SHUT_RDWR);
+            close(g_listen_fd);
+            g_listen_fd = -1;
+        }
+    }
+
+   static void sigusr1_handler(int) {
+        gcov_flush_safe_once();
+    }
+
+    static void sigterm_handler(int) {
+        set_shutdown_and_wake();
+        gcov_flush_safe_once();
+    }
+
+
 
     void stage_scc_loop()
     {
-        Job job;
-        while (q_scc.pop(job))
-        {
-            job.res_scc = run_alg_or_error("SCC", job.graph, job.params, job.directed);
-            if (job.kind == AlgKind::SINGLE_SCC) q_agg.push(std::move(job));
-            else q_mst.push(std::move(job));
+        try {
+            Job job;
+            while (q_scc.pop(job))
+            {
+                job.res_scc = run_alg_or_error("SCC", job.graph, job.params, job.directed);
+                if (job.kind == AlgKind::SINGLE_SCC) q_agg.push(std::move(job));
+                else q_mst.push(std::move(job));
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[scc] exception: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "[scc] unknown exception\n";
         }
     }
+
 
     void stage_mst_loop()
     {
-        Job job;
-        while (q_mst.pop(job))
-        {
-            job.res_mst = run_alg_or_error("MST", job.graph, job.params, job.directed);
-            if (job.kind == AlgKind::SINGLE_MST) q_agg.push(std::move(job));
-            else q_cliques.push(std::move(job));
+        try {
+            Job job;
+            while (q_mst.pop(job))
+            {
+                job.res_mst = run_alg_or_error("MST", job.graph, job.params, job.directed);
+                if (job.kind == AlgKind::SINGLE_MST) q_agg.push(std::move(job));
+                else q_cliques.push(std::move(job));
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[mst] exception: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "[mst] unknown exception\n";
         }
     }
+
 
     void stage_cliques_loop()
     {
-        Job job;
-        while (q_cliques.pop(job))
-        {
-            job.res_cliques = run_alg_or_error("CLIQUES", job.graph, job.params, job.directed);
-            // Last stage for ALL and SINGLE_CLIQUES
-            q_agg.push(std::move(job));
+        try {
+            Job job;
+            while (q_cliques.pop(job))
+            {
+                job.res_cliques = run_alg_or_error("CLIQUES", job.graph, job.params, job.directed);
+                q_agg.push(std::move(job));
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[cliques] exception: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "[cliques] unknown exception\n";
         }
     }
+
 
     void stage_aggregator_loop()
     {
-        Job job;
-        while (q_agg.pop(job))
-        {
-            if (job.kind == AlgKind::PREVIEW)
+        try {
+            Job job;
+            while (q_agg.pop(job))
             {
-                auto body = serialize_graph_edges(job.graph, job.directed);
-                send_response(job.fd, body, true);
-                continue;
-            }
+                if (job.kind == AlgKind::PREVIEW) {
+                    auto body = serialize_graph_edges(job.graph, job.directed);
+                    send_response(job.fd, body, true);
+                    if (peer_already_closed_write(job.fd)) { close(job.fd); }
+                    continue;
+                }
+                if (job.kind == AlgKind::SINGLE_MAX_FLOW) { 
+                    send_response(job.fd, job.res_max_flow, true);
+                    if (peer_already_closed_write(job.fd)) 
+                    { close(job.fd); }
+                    continue; 
+                }
+                if (job.kind == AlgKind::SINGLE_SCC)      { 
+                    send_response(job.fd, job.res_scc, true);    
+                    if (peer_already_closed_write(job.fd)) { close(job.fd); }
+                    continue; 
+                }
+                if (job.kind == AlgKind::SINGLE_MST)      { send_response(job.fd, job.res_mst, true);    if (peer_already_closed_write(job.fd)) { close(job.fd); }
+                    continue; 
+                }
+                if (job.kind == AlgKind::SINGLE_CLIQUES)  { 
+                    send_response(job.fd, job.res_cliques, true);    
+                    if (peer_already_closed_write(job.fd)) { 
+                        close(job.fd); 
+                    }
+                    continue; 
+                }
 
-            if (job.kind == AlgKind::SINGLE_MAX_FLOW)
-            {
-                send_response(job.fd, job.res_max_flow, true);
-                continue;
-            }
-            if (job.kind == AlgKind::SINGLE_SCC)
-            {
-                send_response(job.fd, job.res_scc, true);
-                continue;
-            }
-            if (job.kind == AlgKind::SINGLE_MST)
-            {
-                send_response(job.fd, job.res_mst, true);
-                continue;
-            }
-            if (job.kind == AlgKind::SINGLE_CLIQUES)
-            {
-                send_response(job.fd, job.res_cliques, true);
-                continue;
-            }
+                std::ostringstream body;
+                body << "RESULT MAX_FLOW="  << job.res_max_flow << "\n";
+                body << "RESULT SCC_COUNT=" << job.res_scc      << "\n";
+                body << "RESULT MST_WEIGHT="<< job.res_mst      << "\n";
+                body << "RESULT CLIQUES="   << job.res_cliques  << "\n";
+                send_response(job.fd, body.str(), true);
+                if (peer_already_closed_write(job.fd)) { close(job.fd); }
 
-            // ALL
-            std::ostringstream body;
-            body << "RESULT MAX_FLOW=" << job.res_max_flow << "\n";
-            body << "RESULT SCC_COUNT=" << job.res_scc << "\n";
-            body << "RESULT MST_WEIGHT=" << job.res_mst << "\n";
-            body << "RESULT CLIQUES=" << job.res_cliques << "\n";
-            send_response(job.fd, body.str(), true);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[agg] exception: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "[agg] unknown exception\n";
         }
     }
+
 
     // Threads
     std::atomic<bool> pipeline_started{false};
@@ -143,53 +223,53 @@ bool recv_all_lines(int fd, std::string &out)
 {
     char buf[1024];
     out.clear();
-    while (true)
+    for (;;)
     {
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n > 0) 
-        {
+        const ssize_t n = recv(fd, buf, sizeof(buf), 0);
+        if (n > 0) {
             out.append(buf, buf + n);
-            if (out.find("\nEND\n") != string::npos || out.rfind("\nEND") == out.size() - 4)
-            {
-                return true; // Handle END case
-            } 
-            if (out.find("\nEXIT\n") != string::npos || out == "EXIT\n")
-            {
-                return true; // Handle EXIT case
-            }
-        }
-        else if (n == 0) 
-        {
+            if (out.find("\nEND\n")  != std::string::npos ||
+                out.rfind("\nEND") == out.size() - 4) return true;
+            if (out.find("\nEXIT\n") != std::string::npos || out == "EXIT\n") return true;
+        } else if (n == 0) {
             return !out.empty();
-        }
-        else 
-        {
-            if (errno == EINTR)
-            {
-                continue;
-            }
+        } else {
+            if (errno == EINTR) continue;
             return false;
         }
     }
 }
 
+
+static bool peer_already_closed_write(int fd) {
+    char b;
+    int r = recv(fd, &b, 1, MSG_PEEK | MSG_DONTWAIT);
+    if (r == 0) {
+        return true;
+    }
+    if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        return false;
+    }
+    return false; 
+}
+
+
 // Helper function for sending a response to a client
 void send_response(int fd, const std::string &body, bool ok)
 {
     std::ostringstream oss;
-    oss << (ok ? "OK\n" : "ERR\n") << body << "\nEND\n";
+    oss << (ok ? "OK\n" : "ERR\n") << body;
+    if (body.empty() || body.back() != '\n') oss << '\n';
+    oss << "END\n";
     auto s = oss.str();
     (void)send(fd, s.c_str(), s.size(), 0);
+
+    shutdown(fd, SHUT_WR);
+
+
 }
 
-// Leader–Follower state:
-namespace 
-{
-    std::mutex g_mu;
-    std::condition_variable g_cv;
-    bool g_hasLeader = false;
-    bool g_shutdown = false;
-}
+
 
 
 void lf_server_loop(int srv_fd, int workers)
@@ -240,10 +320,12 @@ void lf_server_loop(int srv_fd, int workers)
                     // Interrupted by a signal; loop and try again.
                     continue;
                 }
-                // Hard error: log and end this worker thread (others keep running).
+                if (g_shutdown) return;
                 std::perror("accept");
                 return;
             }
+             
+            
 
             // Log client connect information.
             char ipstr[INET_ADDRSTRLEN];
@@ -251,7 +333,14 @@ void lf_server_loop(int srv_fd, int workers)
             std::cout << "[LF] Client connected from " << ipstr << ":" << ntohs(cli.sin_port) << "\n";
 
             // Process the connection on this (former leader) thread.
-            handle_client(fd);
+            try {
+                handle_client(fd);
+            } catch (const std::exception& e) {
+                std::cerr << "[LF] handle_client exception: " << e.what() << "\n";
+            } catch (...) {
+                std::cerr << "[LF] handle_client unknown exception\n";
+            }
+
 
             // After the client is handled, loop back and compete for leadership again.
             std::cout << "[LF] Client disconnected" << "\n";
@@ -259,11 +348,19 @@ void lf_server_loop(int srv_fd, int workers)
     };
 
     // Start the fixed-size thread pool.
-    std::vector<std::thread> pool;
+   std::vector<std::thread> pool;
     pool.reserve(workers);
-    for (int i=0;i<workers;i++)
-    {
-        pool.emplace_back(worker);  
+    for (int i = 0; i < workers; ++i) {
+        try {
+            pool.emplace_back(worker);
+        } catch (const std::system_error& e) {
+            std::cerr << "[LF] thread create failed: " << e.what() << "\n";
+            break;
+        }
+    }
+    if (pool.empty()) {
+        std::cerr << "[LF] no worker threads started; exiting.\n";
+        return;
     } 
 
     // Kick off the first leader by ensuring no leader is marked and notifying one waiter.
@@ -292,24 +389,43 @@ static string trim_cr(string s)
 }
 
 // Helper function for running an algorithm and handling errors
-static string run_alg_or_error(const string& alg, const Graph& g, const unordered_map<string,int>& params, bool requestedDirected)
+static string run_alg_or_error(const string& alg, const Graph& g,
+                               const unordered_map<string,int>& params, bool requestedDirected)
 {
-    // directed-required algorithms
-    bool isDirectedAlg = (alg=="MAX_FLOW" || alg=="SCC");
+    bool isDirectedAlg = (alg == "MAX_FLOW" || alg == "SCC");
     bool okForThisGraph = (requestedDirected && isDirectedAlg) || (!requestedDirected && !isDirectedAlg);
-    if (!okForThisGraph) 
-    {
+    if (!okForThisGraph) {
         std::ostringstream er;
-        er << "Error: cannot run " << alg << " on " << (requestedDirected?"directed":"undirected") << " graph";
+        er << "Error: cannot run " << alg << " on " << (requestedDirected ? "directed" : "undirected") << " graph";
         return er.str();
     }
+
+    int V = g.get_vertices();
+
+    if (alg == "MAX_FLOW") {
+        auto itS = params.find("SRC");
+        auto itT = params.find("SINK");
+        if (itS == params.end() || itT == params.end())
+            return "Error: missing SRC/SINK for MAX_FLOW";
+        int s = itS->second, t = itT->second;
+        if (s < 0 || s >= V || t < 0 || t >= V || s == t)
+            return "Error: invalid SRC/SINK for MAX_FLOW";
+    }
+
+    if (alg == "CLIQUES") {
+        auto itK = params.find("K");
+        if (itK == params.end())
+            return "Error: missing K for CLIQUES";
+        int k = itK->second;
+        if (k < 2 || k > V)
+            return "Error: invalid K for CLIQUES";
+    }
+
     auto ptr = AlgorithmFactory::create(alg);
-    if (!ptr)
-    {
-        return "Unsupported algorithm";
-    } 
+    if (!ptr) return "Unsupported algorithm";
     return ptr->run(g, params);
 }
+
 
 // Helper function for serializing graph edges
 static std::string serialize_graph_edges(const Graph& g, bool directed)
@@ -388,6 +504,13 @@ void handle_client(int fd)
             send_response(fd, "BYE", true);
             close(fd);
             return; 
+        }
+
+        if (req == "SHUTDOWN\n" || req.find("\nSHUTDOWN\n") != std::string::npos) {
+            send_response(fd, "SERVER_SHUTTING_DOWN", true);
+            set_shutdown_and_wake();
+            close(fd);
+            return;
         }
 
         // 3) Parse the line-based protocol into local variables
@@ -498,16 +621,21 @@ void handle_client(int fd)
         if (parse_error) 
         {
             send_response(fd, perr, false);
+            if (peer_already_closed_write(fd)) { close(fd); return; }
             continue; 
         }
         if (V<=0) 
         {
             send_response(fd, "Missing/invalid V", false);
+            if (peer_already_closed_write(fd)) { close(fd); return; }
+
             continue; 
         }
         if (randomFlag && (E<0)) 
         {
             send_response(fd, "Missing/invalid E", false);
+            if (peer_already_closed_write(fd)) { close(fd); return; }
+
             continue; 
         }
 
@@ -515,30 +643,37 @@ void handle_client(int fd)
         Graph g(V, directed!=0);
         if (!randomFlag) 
         {
-            // From explicit EDGE lines
-            for (auto &e: edges)
-            {
-                g.addEdge(e.u,e.v,e.w);
+            // Validate all edges before touching Graph to avoid asserts/abort
+            bool bad = false;
+            std::string err;
+            for (auto &e : edges) {
+                if (e.u < 0 || e.v < 0 || e.u >= V || e.v >= V) {
+                    err = "Invalid EDGE vertex index";
+                    bad = true; break;
+                }
+                if (e.w <= 0) {
+                    err = "Invalid EDGE weight";
+                    bad = true; break;
+                }
+            }
+            if (bad) {
+                send_response(fd, err, false);
+                continue; // back to read next request
+            }
+            for (auto &e : edges) {
+                g.addEdge(e.u, e.v, e.w);
             }
         }
         else 
         {
-            // RANDOM=1: clamp E to a feasible range, normalize weight range, then generate.
-            int maxE = directed? V*(V-1) : V*(V-1)/2; // maximum simple edges possible
-            if (E>maxE)
-            {
-              E=maxE;  
-            } 
-            if (E<0)
-            {
-              E=0;  
-            } 
-            if (wmax < wmin)
-            {
-               std::swap(wmax, wmin); 
-            } 
+            // RANDOM=1: clamp and normalize then generate
+            int maxE = directed? V*(V-1) : V*(V-1)/2;
+            if (E > maxE) E = maxE;
+            if (E < 0) E = 0;
+            if (wmax < wmin) std::swap(wmax, wmin);
             g = generate_random_graph(V, E, seed, directed!=0, wmin, wmax);
         }
+
 
         // 6) Prepare algorithm parameters map (only include provided keys)
         unordered_map<string,int> params;
@@ -571,7 +706,8 @@ void handle_client(int fd)
         else 
         {
             send_response(fd, "Unsupported algorithm", false);
-            continue;
+            close(fd);
+            return;
         }
 
         // Enqueue to appropriate entry queue
@@ -599,7 +735,8 @@ void handle_client(int fd)
 }
 
 int run_server(int argc, char *argv[])
-{
+{   
+     signal(SIGPIPE, SIG_IGN);
     // 1) Determine listening port: default PORT, allow override via argv[1]
     int port = PORT;
     if (argc>=2) 
@@ -618,6 +755,10 @@ int run_server(int argc, char *argv[])
         std::perror("socket");
         return 1;
     }
+    g_listen_fd = srv; 
+    signal(SIGUSR1, sigusr1_handler);
+    signal(SIGTERM, sigterm_handler);
+    signal(SIGINT,  sigterm_handler);
 
     // 3) Allow quick rebinding after restarts (SO_REUSEADDR)
     int opt=1;
@@ -649,8 +790,10 @@ int run_server(int argc, char *argv[])
 
     // 6) Start the Leader–Follower loop with N worker threads
     //    Use hardware_concurrency() when available, but at least 4 threads.
-    int workers = std::max(4u, std::thread::hardware_concurrency());
+   unsigned hc = std::thread::hardware_concurrency();
+    int workers = (hc == 0) ? 4 : std::min<unsigned>(8, std::max(4u, hc)); // גבול עליון 8
     lf_server_loop(srv, workers);
+
 
     // 7) Cleanup socket after the LF loop exits (on shutdown or fatal error)
     stop_pipeline();

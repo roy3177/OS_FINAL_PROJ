@@ -1,0 +1,12 @@
+1      # mode=ALL
+1      # directed
+4      # V
+3      # E
+1      # WMIN
+2      # WMAX
+2      # SRC=2
+2      # SINK=2 
+3      # SINK=3 -> ok
+-1     # K skip
+0      # Do NOT run ALL after preview
+0      # Exit

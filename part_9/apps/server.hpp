@@ -18,6 +18,9 @@
 #include <condition_variable>
 #include <future>
 #include <atomic>
+#include <signal.h>
+#include <system_error>
+#include <csignal>
 
 #include "../../part_1/graph_impl.hpp"
 // Reuse Part 8's random graph interface; implementation will be linked via makefile sources.
