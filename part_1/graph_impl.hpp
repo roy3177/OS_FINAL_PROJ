@@ -1,3 +1,15 @@
+/*
+@ author: Roy Meoded
+@ author: Yarin Keshet
+@ date: 10-10-2025
+
+@ description: Graph implementation using adjacency list representation.
+                Supports both directed and undirected graphs with capacities on edges.
+                Includes methods for adding edges, retrieving neighbors, checking edge existence, and printing the graph.
+                Designed for use in network flow algorithms and other graph-related computations.
+*/
+
+
 #pragma once
 
 #include <iostream>

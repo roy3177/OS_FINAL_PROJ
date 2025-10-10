@@ -1,8 +1,0 @@
-[max_flow] exception: number of vertices must be positive
-[cliques] exception: number of vertices must be positive
-[scc] exception: number of vertices must be positive
-[agg] exception: number of vertices must be positive
-[mst] exception: number of vertices must be positive
-[LF] handle_client exception: number of vertices must be positive
-[LF] handle_client exception: number of vertices must be positive
-[LF] handle_client exception: number of vertices must be positive
