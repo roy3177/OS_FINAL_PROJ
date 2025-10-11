@@ -31,6 +31,7 @@ const std::vector<int>& Graph::get_neighbors(int u) const
 
 bool Graph::is_edge(int u, int v) const 
 {
+    // Using const auto& ensures that the returned reference is not copied into a new vector:
     const auto& neighbors = get_neighbors(u);
     return std::find(neighbors.begin(), neighbors.end(), v) != neighbors.end();
 }

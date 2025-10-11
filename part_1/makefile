@@ -22,7 +22,7 @@ graph_impl.o: graph_impl.cpp graph_impl.hpp
 gcov: all
 	./main_case1
 	./main_case2
-	# generate gcov reports
+	# generate gcov reports, -b for branch info, -c for branch summary:
 	gcov -b -c -o . graph_impl.cpp main_case1.cpp main_case2.cpp
 
 valgrind-mem: all
