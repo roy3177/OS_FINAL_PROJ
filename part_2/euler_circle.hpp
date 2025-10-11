@@ -1,3 +1,12 @@
+/*
+@author: Roy Meoded
+@author: Yarin Keshet  
+@ date: 10-10-2025
+
+@ description: This file contains the implementation of the EulerCircle class, 
+which provides functionality to find an Eulerian circuit in a given graph using Hierholzer's algorithm.
+*/
+
 #pragma once
 
 #include <iostream>
