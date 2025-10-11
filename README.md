@@ -72,7 +72,7 @@ The project is divided into the following parts:
 - **Key Files**:
   - `algorithms/`: Contains implementations of advanced graph algorithms.
   - `strategy_factory/`: Implements a factory pattern for algorithm selection.
-  - `apps/`: Contains client-server applications for testing algorithms.
+  - `apps/`: Contains client-server applications for testing algorithms + PDF file with visual explanation.
 - **Purpose**: Demonstrates the application of complex graph algorithms in a distributed environment.
 
 ---
