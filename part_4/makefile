@@ -43,21 +43,19 @@ gcov: all
 	gcov -b -c -o ../part_3    ../part_3/random_graph.cpp || true
 
 # ==== Valgrind ====
-memcheck: $(BIN)
+valgrind-mem: $(BIN)
 	valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all \
 	         --track-origins=yes --errors-for-leak-kinds=all --error-exitcode=1 \
 	         ./$(BIN) $(ARGS_RAND)
 
-helgrind: $(BIN)
+valgrind-hel: $(BIN)
 	valgrind --tool=helgrind --history-level=full --error-exitcode=1 \
 	         ./$(BIN) $(ARGS_RAND)
 
-callgrind: $(BIN)
+valgrind-cg: $(BIN)
 	valgrind --tool=callgrind --callgrind-out-file=callgrind.out.$(BIN) \
 	         ./$(BIN) -v 10 -e 15 -s 42
 	@echo "Open with: kcachegrind callgrind.out.$(BIN)"
-
-cachegrind cg: $(BIN)
 	valgrind --tool=cachegrind --cachegrind-out-file=cachegrind.out.$(BIN) \
 	         ./$(BIN) -v 10 -e 15 -s 42
 	@echo "Annotate with: cg_annotate cachegrind.out.$(BIN)"

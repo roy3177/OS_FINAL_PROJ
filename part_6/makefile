@@ -45,22 +45,22 @@ gcov: all
 	gcov -b -c server.cpp -o . || true
 
 # ===== Valgrind =====
-valgrind: memcheck
 
-memcheck: $(BIN_SERVER) $(BIN_CLIENT)
+
+valgrind-mem: $(BIN_SERVER) $(BIN_CLIENT)
 	@echo "== Valgrind Memcheck =="
 	./server > /dev/null 2>&1 &
 	sleep 0.2
 	printf "3\n1\n1 2\nn\n" | valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./client
 
-callgrind: $(BIN_SERVER) $(BIN_CLIENT)
+valgrind-cg: $(BIN_SERVER) $(BIN_CLIENT)
 	@echo "== Valgrind Callgrind =="
 	./server > /dev/null 2>&1 &
 	sleep 0.2
 	printf "4\n4\n0 1\n1 2\n2 3\n3 0\nn\n" | valgrind --tool=callgrind --callgrind-out-file=callgrind.out ./client
 	@echo "Use kcachegrind to view: callgrind.out"
 
-helgrind: $(BIN_SERVER) $(BIN_CLIENT)
+valgrind-hel: $(BIN_SERVER) $(BIN_CLIENT)
 	@echo "== Valgrind Helgrind =="
 	./server > /dev/null 2>&1 &
 	sleep 0.2
