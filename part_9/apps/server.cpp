@@ -5,6 +5,10 @@ extern "C" void __gcov_flush(void) __attribute__((weak));
 
 static std::atomic_flag g_flush_once = ATOMIC_FLAG_INIT; // ensure gcov flush only once
 
+static std::atomic<std::chrono::steady_clock::time_point> g_last_activity;
+static std::atomic<int> g_active_clients{0};
+
+
 // Thread-safe gcov flush called from signal handlers:
 static inline void gcov_flush_safe_once() {
     if (g_flush_once.test_and_set()) {
@@ -320,10 +324,6 @@ void send_response(int fd, const std::string &body, bool ok)
     auto s = oss.str();
     (void)send(fd, s.c_str(), s.size(), 0);
 
-    shutdown(fd, SHUT_WR);
-    close(fd); // Close after sending
-
-
 }
 
 
@@ -363,6 +363,7 @@ void lf_server_loop(int srv_fd, int workers)
             socklen_t clilen = sizeof(cli);
             int fd = accept(srv_fd, (sockaddr*)&cli, &clilen);
 
+            
             // Immediately promote a follower so another thread can accept the next client.
             lk.lock();
             g_hasLeader = false;   // leadership is free
@@ -382,12 +383,14 @@ void lf_server_loop(int srv_fd, int workers)
                 return;
             }
              
-            
+            g_last_activity = std::chrono::steady_clock::now();
+            g_active_clients.fetch_add(1, std::memory_order_relaxed);
 
             // Log client connect information.
             char ipstr[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &cli.sin_addr, ipstr, sizeof(ipstr));
             std::cout << "[LF] Client connected from " << ipstr << ":" << ntohs(cli.sin_port) << "\n";
+            g_last_activity = std::chrono::steady_clock::now();
 
             // Process the connection on this (former leader) thread.
             try {
@@ -401,6 +404,10 @@ void lf_server_loop(int srv_fd, int workers)
 
             // After the client is handled, loop back and compete for leadership again.
             std::cout << "[LF] Client disconnected" << "\n";
+            g_last_activity = std::chrono::steady_clock::now();
+            g_active_clients.fetch_sub(1, std::memory_order_relaxed);
+
+
         }
     };
 
@@ -798,6 +805,10 @@ void handle_client(int fd)
 
 int run_server(int argc, char *argv[])
 {   
+    g_shutdown = false;
+    g_last_activity = std::chrono::steady_clock::now();
+
+
      signal(SIGPIPE, SIG_IGN);
     // 1) Determine listening port: default PORT, allow override via argv[1]
     int port = PORT;
@@ -817,6 +828,28 @@ int run_server(int argc, char *argv[])
         std::perror("socket");
         return 1;
     }
+
+  std::thread([]{
+    constexpr auto kIdle = std::chrono::seconds(30);
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        if (g_shutdown) break;
+
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = now - g_last_activity.load();
+
+        if (elapsed >= kIdle && g_active_clients.load(std::memory_order_relaxed) == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            if (std::chrono::steady_clock::now() - g_last_activity.load() >= kIdle &&
+                g_active_clients.load(std::memory_order_relaxed) == 0) {
+                std::cout << "[IDLE] No client for 30s -> shutting down.\n";
+                set_shutdown_and_wake();
+                break;
+            }
+        }
+    }
+}).detach();
+
     g_listen_fd = srv; 
     signal(SIGUSR1, sigusr1_handler);
     signal(SIGTERM, sigterm_handler);
