@@ -30,12 +30,16 @@ static void sigterm_handler(int) {;
 }
 
 
-// Forward declarations for helpers used in pipeline stages
+// Forward declarations for helpers used in pipeline stages:
+
 static std::string run_alg_or_error(const std::string& alg, const Graph& g,
                                     const std::unordered_map<std::string,int>& params,
                                     bool requestedDirected);
 static std::string serialize_graph_edges(const Graph& g, bool directed);
+
+// Check if peer has already closed its write side:
 static bool peer_already_closed_write(int fd);
+
 static int g_listen_fd = -1;
 
 using std::string;
@@ -46,13 +50,14 @@ using std::unordered_map;
 namespace 
 {
     // Leader–Follower state(like part_8):
-    std::mutex g_mu;
-    std::condition_variable g_cv;
-    bool g_hasLeader = false;
-    bool g_shutdown = false;
+    std::mutex g_mu; // mutex for leader election
+    std::condition_variable g_cv; // condition variable for leader election
+    bool g_hasLeader = false; // is there a current leader?
+    bool g_shutdown = false; // shutdown requested
 
 
     // Blocking queues between stages:
+    //MAX_FLOW--->SCC--->MST--->CLIQUES--->AGGREGATOR:
     BlockingQueue<Job> q_max_flow;
     BlockingQueue<Job> q_scc;
     BlockingQueue<Job> q_mst;
@@ -165,7 +170,7 @@ namespace
         }
     }
 
-
+    // Aggregator stage-the final stage--->responsible for sending responses back to clients:
     void stage_aggregator_loop()
     {
         try {
@@ -176,9 +181,13 @@ namespace
             {   
                 // Handle PREVIEW and single-algorithm requests separately:
                 if (job.kind == AlgKind::PREVIEW) {
-                    auto body = serialize_graph_edges(job.graph, job.directed);
+                    auto body = serialize_graph_edges(job.graph, job.directed); // serialize graph edges
                     send_response(job.fd, body, true);
-                    if (peer_already_closed_write(job.fd)) { close(job.fd); }
+
+                    // Close connection if peer already closed write side:
+                    if (peer_already_closed_write(job.fd)) {
+                        close(job.fd); 
+                    }
                     continue;
                 }
                 
@@ -222,7 +231,11 @@ namespace
                 body << "RESULT MST_WEIGHT="<< job.res_mst      << "\n";
                 body << "RESULT CLIQUES="   << job.res_cliques  << "\n";
                 send_response(job.fd, body.str(), true);
-                if (peer_already_closed_write(job.fd)) { close(job.fd); }
+
+                // Close connection if peer already closed write side:
+                if (peer_already_closed_write(job.fd)) { 
+                    close(job.fd); 
+                }
 
             }
         } catch (const std::exception& e) {
@@ -233,7 +246,7 @@ namespace
     }
 
 
-    // Aאtomic flag to ensure pipeline is started only once:
+    // Atomic flag to ensure pipeline is started only once:
     std::atomic<bool> pipeline_started{false};
 }
 

@@ -19,7 +19,7 @@ declarations to start/stop the pipeline threads (implemented elsewhere).
 
 #include "../../part_1/graph_impl.hpp" // Graph type used inside Job
 
-// What kind of request this Job represents.
+// What kind of request this Job represents:
 enum class AlgKind 
 {
 	PREVIEW,        // Only preview the graph (no algorithms)
