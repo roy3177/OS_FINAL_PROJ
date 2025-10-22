@@ -21,8 +21,10 @@ void run_server()
     int addrlen = sizeof(address);
     char buffer[4096] = {0}; // buffer to store incoming data
 
-    // Create socket file descriptor:
+    // Create socket file descriptor (TCP):
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    //force errors via environment variables for coverage testing:
     bool force_socket_err     = std::getenv("COV_FORCE_SOCKET_ERROR");
     bool force_setsockopt_err = std::getenv("COV_FORCE_SETSOCKOPT_ERROR");
     bool force_bind_err       = std::getenv("COV_FORCE_BIND_ERROR");
@@ -33,13 +35,14 @@ void run_server()
     if ((server_fd == 0) || force_socket_err)
     {
         perror("socket failed");
-        coverage_exit(EXIT_FAILURE);
+        coverage_exit(EXIT_FAILURE); // Exit on socket creation failure
     }
 
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) || force_setsockopt_err)
+    // Set socket options:
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)) < 0 || force_setsockopt_err)
     {
         perror("setsockopt");
-        coverage_exit(EXIT_FAILURE);
+        coverage_exit(EXIT_FAILURE); // Exit on setsockopt failure
     }
 
     // Initialize address structure:
@@ -47,12 +50,16 @@ void run_server()
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
+
+    // Bind the socket to the specified port:
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0 || force_bind_err)
     {
         perror("bind failed");
         coverage_exit(EXIT_FAILURE);
     }
 
+
+    // Start listening for incoming connections:
     if (listen(server_fd, 3) < 0 || force_listen_err)
     {
         perror("listen");
@@ -63,8 +70,8 @@ void run_server()
     // Main server loop to accept and handle client connections:
     while (true)
     {
-        fd_set readfds;
-        FD_ZERO(&readfds);
+        fd_set readfds; //Define which fds to be monitored by select
+        FD_ZERO(&readfds); //Clear the set
         FD_SET(server_fd, &readfds);
 
         // Timeout: default 30s, override with FAST_TIMEOUT env (used for quick gcov runs)
@@ -81,6 +88,7 @@ void run_server()
         timeout.tv_sec = timeout_sec;
         timeout.tv_usec = 0;
 
+        // Wait for an incoming connection with timeout:
         int activity = select(server_fd + 1, &readfds, nullptr, nullptr, &timeout);
 
         if (activity == 0)
@@ -96,6 +104,7 @@ void run_server()
             break;
         }
 
+        // Accept the incoming connection:
         new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
 
         if (new_socket < 0 || force_accept_err)
@@ -105,7 +114,7 @@ void run_server()
             break;
         }
 
-        int valread = read(new_socket, buffer, 4096);
+        int valread = read(new_socket, buffer, 4096); // Read data from client
         std::string input(buffer, valread);
 
         if (input == "EXIT_CLIENT")
@@ -117,6 +126,7 @@ void run_server()
 
         std::cout << "Client connected." << std::endl;
 
+        // Parse input to construct the graph:
         std::istringstream iss(input);
         int V = 0, E = 0;
         iss >> V >> E;
@@ -165,7 +175,7 @@ void run_server()
         std::cout << "Received from client:\n" << input << std::endl;
         std::cout << "Response sent:\n" << result << std::endl;
 
-        send(new_socket, result.c_str(), result.size(), 0);
+        send(new_socket, result.c_str(), result.size(), 0); // Send response to client
         close(new_socket);
     }
     return;

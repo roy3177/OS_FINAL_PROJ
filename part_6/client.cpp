@@ -2,9 +2,11 @@
 
 void run_client() 
 {    
-    //serv_addr is a structure used to specify the server’s address for the socket connection
+    //serv_addr is a structure used to specify the server’s address for the socket connection:
     struct sockaddr_in serv_addr;
-    //buffer is a character array used to store data received from the server
+
+
+    //buffer is a character array used to store data received from the server:
     char buffer[4096] = {0};
 
     
