@@ -8,7 +8,7 @@ bool getline_with_timeout(std::string &out, int timeout_ms = PER_INPUT_TIMEOUT_M
     struct pollfd pfd;
     pfd.fd = STDIN_FILENO;
     pfd.events = POLLIN;
-    int ret = poll(&pfd, 1, timeout_ms);
+    int ret = poll(&pfd, 1, timeout_ms); // wait for input with timeout
 
     // If data is available to read, read a line from stdin:
     if (ret > 0) {
@@ -33,7 +33,7 @@ int prompt_int(const std::string& msg, int minVal, int maxVal)
 
         // Read input with timeout:
         if (!getline_with_timeout(s)) {
-            std::cout << "\n[Timeout 10s] Exiting client.\n";
+            std::cout << "\n[Timeout 60s] Exiting client.\n";
             exit(0);
         }
 
@@ -53,7 +53,7 @@ int prompt_int(const std::string& msg, int minVal, int maxVal)
 
 
 
-
+// Main client function:
 int run_client(int argc, char* argv[])
 {
     int port = PORT; // Reads port from argv (default 9090).
@@ -89,9 +89,9 @@ int run_client(int argc, char* argv[])
 
     while (true) 
     {
-        println_rule();
+        println_rule(); // Print a separator line
 
-        // Numeric menu for algorithm selection
+        // Numeric menu for algorithm selection, using prompt_int for input:
         int sel = prompt_int(
             "Choose algorithm:\n"
             "  1) MAX_FLOW\n"
@@ -135,6 +135,7 @@ int run_client(int argc, char* argv[])
             {
                 while (true) 
                 {
+                    //Using flush to ensure prompt is displayed immediately:
                     std::cout << "Edge " << (i+1) << ": "<< std::flush;
                     std::string line;
                     if (!getline_with_timeout(line)) {
@@ -179,9 +180,9 @@ int run_client(int argc, char* argv[])
                             std::cout<<"Duplicate edge, please try again.\n";
                             continue; 
                         }
-                        undup.insert({a.first,a.second});
+                        undup.insert({a.first,a.second}); // mark as added
                     }
-                    edges.emplace_back(u,v,w);
+                    edges.emplace_back(u,v,w); // add edge
                     break;
                 }
             }
@@ -190,6 +191,7 @@ int run_client(int argc, char* argv[])
             std::cout << "[No edges to enter, skipping edge input]\n";
         }
 
+        //For Max Flow, prompt for SRC and SINK, and for Cliques, prompt for K:
        int SRC = -1, SINK = -1, K = -1;
 
         // Additional parameters for specific algorithms:

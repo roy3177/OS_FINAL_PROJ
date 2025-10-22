@@ -16,10 +16,14 @@ to find the maximum flow in a given graph using the Edmonds-Karp algorithm.
 class MaxFlowAlgo : public IAlgorithm 
 {
 public:
+
+    // Returns the stable identifier for the algorithm:
     std::string id() const override
     {
         return "MAX_FLOW"; 
     }
+
+    // Executes the algorithm on the given graph with parameters:
     std::string run(const Graph& g, const std::unordered_map<std::string,int>& params) override 
     {
         int src = params.count("SRC") ? params.at("SRC") : 0; // Reads SRC from params (defaults to 0)

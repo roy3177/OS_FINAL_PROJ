@@ -7,10 +7,12 @@ static bool isClique(const Graph& graph, const std::vector<int>& vertices)
 	for (size_t i = 0; i < vertices.size(); ++i) 
     {
 		for (size_t j = i + 1; j < vertices.size(); ++j) 
-        {
+        {	
+
+			// Check if there's an edge between vertices[i] and vertices[j]:
 			if (!graph.is_edge(vertices[i], vertices[j])) 
             {
-				return false;
+				return false; // If any pair is not connected, it's not a clique
 			}
 		}
 	}
@@ -21,6 +23,7 @@ static bool isClique(const Graph& graph, const std::vector<int>& vertices)
 This function recursively generates all possible combinations of k vertices from the graph:
 *If the current combination (current) has k vertices,
 it checks if they form a clique and returns 1 if true, 0 otherwise.
+
 *Otherwise, it tries adding each vertex (from start to n-1) to current,
 recursing to build larger combinations.
 *After each recursive call, it removes the last vertex to backtrack.
@@ -28,7 +31,9 @@ recursing to build larger combinations.
 */
 
 static int countCliquesRecursive(const Graph& graph, int k, int start, std::vector<int>& current) 
-{
+{	
+
+	// Base case: if current combination has k vertices:
 	if (static_cast<int>(current.size()) == k) 
     {
 		return isClique(graph, current) ? 1 : 0;
@@ -39,7 +44,7 @@ static int countCliquesRecursive(const Graph& graph, int k, int start, std::vect
     {
 		current.push_back(v);
 		count += countCliquesRecursive(graph, k, v + 1, current); //Calling itself recursively to build combinations.
-		current.pop_back();
+		current.pop_back(); // Backtrack: remove last vertex added
 	}
 	return count;
 }

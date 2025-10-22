@@ -23,5 +23,7 @@ It uses the Factory Design Pattern to encapsulate the creation logic.
 class AlgorithmFactory 
 {
 public:
+
+    //Using unique_ptr for automatic memory management of created algorithm instances:
     static std::unique_ptr<IAlgorithm> create(const std::string& id);
 };

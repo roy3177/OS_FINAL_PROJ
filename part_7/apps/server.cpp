@@ -1,13 +1,15 @@
 #include "server.hpp"
 
-//For SIGINT/SIGTERM handling:
-static int g_server_fd = -1;
+//For SIGINT(num of the signal)/SIGTERM handling:
+static int g_server_fd = -1; // (-1 means not initialized)
 
 // Helper function for receiving all lines from a socket
+//TCP is a stream protocol->we may not receive all data in one recv call:
 bool recv_all_lines(int fd, std::string &out) 
 {
     char buf[1024]; // buffer for receiving data(size is 1024 bytes)
     out.clear(); // clear the output string
+
     while (true) 
     {
         ssize_t n = recv(fd, buf, sizeof(buf), 0); // receive data from socket
@@ -25,7 +27,7 @@ bool recv_all_lines(int fd, std::string &out)
                 return true;
             }
         }
-        
+        // connection closed by peer:
         else if (n == 0) 
         {
             // connection closed:
@@ -34,6 +36,7 @@ bool recv_all_lines(int fd, std::string &out)
         // connection error:
         else 
         {
+            // if interrupted by signal, retry:
             if (errno == EINTR) continue;
             return false;
         }
@@ -44,11 +47,14 @@ bool recv_all_lines(int fd, std::string &out)
 void send_response(int fd, const std::string &body, bool ok) 
 {
     std::ostringstream oss;
+
+    // Construct response string:
     oss << (ok ? "OK\n" : "ERR\n") << body << "\nEND\n";
     auto s = oss.str();
     (void)send(fd, s.c_str(), s.size(), 0);
 }
 
+// Main server loop function:
 int run_server(int argc, char *argv[]) 
 {
     int port = PORT; // default port is 9090
@@ -65,7 +71,7 @@ int run_server(int argc, char *argv[])
 
     // Create socket:
     int srv = socket(AF_INET, SOCK_STREAM, 0);
-    g_server_fd = srv;
+    g_server_fd = srv; // for signal handling
 
     if (srv < 0) 
     {
@@ -75,14 +81,18 @@ int run_server(int argc, char *argv[])
 
     int opt = 1; // opt = 1 enables the option (allow reuse of a recently used local address/port,
     // mainly to avoid “Address already in use” after restarts).
+
+    //SO_REUSEADDR option allows the server to bind to an address that is in TIME_WAIT state:
+    //Prevent "Address already in use" error on restart:
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     //Define the server address struct and bind to the specified port:
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY); //INADDR_ANY --> listen to all local addresses
+    addr.sin_port = htons(port); // Convert port to network byte order
 
+    // Bind the socket to the address and port:
     if (bind(srv, (sockaddr *)&addr, sizeof(addr)) < 0) 
     {
         std::perror("bind");
@@ -165,7 +175,7 @@ int run_server(int argc, char *argv[])
 
 
 
-            // Parse request
+            // Parse request: 
             std::istringstream iss(req);
             std::string line;
             std::string alg;
@@ -323,6 +333,7 @@ int run_server(int argc, char *argv[])
                     g.addEdge(e.u, e.v, e.w);
                 } 
 
+                //Using the Factory to create the algorithm instance:
                 auto algoPtr = AlgorithmFactory::create(alg);
                 if (!algoPtr) 
                 {
@@ -330,6 +341,8 @@ int run_server(int argc, char *argv[])
                     continue; 
                 }
 
+
+                // Prepare parameters map-relevant for the algorithms:MAX_FLOW needs SRC and SINK, CLIQUES needs K, others none:
                 std::unordered_map<std::string,int> params;
                 if (src >= 0)
                 {
@@ -344,6 +357,7 @@ int run_server(int argc, char *argv[])
                    params["K"] = k; 
                 } 
 
+                // Run the algorithm and send the response(using the strategy pattern):
                 std::string out = algoPtr->run(g, params);
                 send_response(fd, out, true);
             }

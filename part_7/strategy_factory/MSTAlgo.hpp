@@ -15,10 +15,14 @@ to find the weight of the Minimum Spanning Tree (MST) in a given graph.
 class MSTAlgo : public IAlgorithm 
 {
 public:
+
+    // Returns the stable identifier for the algorithm:
     std::string id() const override 
     { 
         return "MST"; 
     }
+
+    //In MST algo, no parameters are needed, so we ignore the params map:
     std::string run(const Graph& g, const std::unordered_map<std::string,int>&) override 
     {
         MSTWeight algo; // Instantiates the algorithm class

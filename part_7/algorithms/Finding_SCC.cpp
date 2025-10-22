@@ -14,19 +14,21 @@ so the stack ends up with vertices ordered by their finishing times (used to fin
 */
 static void dfsFillOrder(const Graph& graph, int v, std::vector<bool>& visited, std::stack<int>& order) 
 {
-	visited[v] = true;
+	visited[v] = true; // Mark the current node as visited
+
+	// Recur for all the vertices adjacent to this vertex(v):
 	for (int u : graph.get_neighbors(v)) 
     {
 		if (!visited[u]) 
         {
-			dfsFillOrder(graph, u, visited, order);
+			dfsFillOrder(graph, u, visited, order); // Recursive call
 		}
 	}
-	order.push(v);
+	order.push(v); // Push v to stack after visiting all its neighbors
 }
 
 /*
-This function performs a depth-first search (DFS) on the transposed graph starting from vertex v:
+This function performs a depth-first search (DFS) on the transposed graph (G^t) , starting from vertex v:
 *It marks v as visited.
 *Adds v to the current strongly connected component (component).
 *For each neighbor u of v in the transposed graph, if u is not visited, it recursively calls itself on u.
@@ -44,7 +46,7 @@ static void dfsOnTranspose(const std::vector<std::vector<int>>& transpose, int v
     {
 		if (!visited[u]) 
         {
-			dfsOnTranspose(transpose, u, visited, component);
+			dfsOnTranspose(transpose, u, visited, component); // Recursive call
 		}
 	}
 }
@@ -91,10 +93,10 @@ std::vector<std::vector<int>> FindingSCC::findSCCs(const Graph& graph)
 		int v = order.top(); order.pop();
 		if (!visited[v]) 
         {
-			std::vector<int> component;
-			dfsOnTranspose(transpose, v, visited, component);
-			sccs.push_back(component);
-		}
+			std::vector<int> component; // To store current SCC
+			dfsOnTranspose(transpose, v, visited, component); // Get one SCC
+			sccs.push_back(component); // Add current SCC to the list of SCCs
+		} 
 	}
 	return sccs;
 }

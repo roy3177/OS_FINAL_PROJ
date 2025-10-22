@@ -44,14 +44,17 @@ int FindingMaxFlow::findMaxFlow(Graph& g, int source, int sink)
             int u = q.front(); assigns that node to the variable u.
             q.pop(); removes that node from the queue, so it's possible to process the next one in the following iteration.
             */
-            int u = q.front(); q.pop();
+            int u = q.front();
+            q.pop();
             for (int v = 0; v < V; ++v) 
             {
                 // Check if the parent of v is not assigned and there's available capacity
                 if (parent[v] == -1 && residual[u][v] > 0) 
                 {
                     parent[v] = u; // Set parent of v to u (u-->v in the path)
-                    if (v == t) return true; // If we reached the sink, return true
+                    if (v == t) {
+                        return true; // If we reached the sink, return true
+                    }
                     q.push(v); // Add v to the BFS queue
                 }
             }
@@ -77,8 +80,8 @@ int FindingMaxFlow::findMaxFlow(Graph& g, int source, int sink)
         for (int v = sink; v != source; v = parent[v]) 
         {
             int u = parent[v];
-            residual[u][v] -= path_flow;
-            residual[v][u] += path_flow;
+            residual[u][v] -= path_flow; // Decrease forward edge capacity
+            residual[v][u] += path_flow; // Increase reverse edge capacity
         }
         maxFlow += path_flow;
     }

@@ -16,10 +16,14 @@ to find the strongly connected components (SCC) in a given graph.
 class SCCAlgo : public IAlgorithm 
 {
 public:
+
+    // Returns the stable identifier for the algorithm:
     std::string id() const override 
     {
         return "SCC"; 
     }
+
+    //In SCC algo, no parameters are needed, so we ignore the params map:
     std::string run(const Graph& g, const std::unordered_map<std::string,int>&) override 
     {
         FindingSCC algo; // Instantiates the algorithm class

@@ -12,6 +12,8 @@ which builds the minimum spanning tree (MST) by repeatedly adding the smallest-w
 struct Edge 
 {
 	int u, v, weight;
+	
+	// Compare edges by weight:
 	bool operator<(const Edge& other) const 
     {
 		return weight < other.weight;
@@ -33,23 +35,49 @@ class DSU
 {
 	std::vector<int> parent, rank;
 public:
+
+	// Constructor:
 	DSU(int n) : parent(n), rank(n, 0) 
     {
 		for (int i = 0; i < n; ++i) parent[i] = i;
 	}
+
+	//Find  the representative of the set containing x:
 	int find(int x) 
     {
-		if (parent[x] != x) parent[x] = find(parent[x]);
+		if (parent[x] != x){
+			parent[x] = find(parent[x]); // Path compression(recursive call)
+		}
+
 		return parent[x];
 	}
+
+	// Unite the sets containing x and y:
 	bool unite(int x, int y) 
     {
-		int xr = find(x), yr = find(y);
-		if (xr == yr) return false;
-		if (rank[xr] < rank[yr]) parent[xr] = yr;
-		else if (rank[xr] > rank[yr]) parent[yr] = xr;
-		else { parent[yr] = xr; rank[xr]++; }
-		return true;
+		int xr = find(x);
+		int yr = find(y);
+
+		// If they are already in the same set, return false:
+		if (xr == yr){ 
+			return false;
+		}
+
+		// Union by rank:
+		if (rank[xr] < rank[yr]){ 
+			parent[xr] = yr;
+		}
+		else if (rank[xr] > rank[yr]){ 
+			parent[yr] = xr;
+		}
+
+		// If ranks are equal, make one root the parent of the other and increase its rank:
+		else { 
+			parent[yr] = xr;
+			rank[xr]++; 
+		}
+
+		return true; // Successfully united
 	}
 };
 
@@ -65,7 +93,7 @@ This function implements Kruskal's algorithm to find the total weight of the Min
 int MSTWeight::findMSTWeight(const Graph& graph) 
 {
 	int n = graph.get_vertices();
-	std::vector<Edge> edges;
+	std::vector<Edge> edges; // To store all edges
 	const auto& adj = graph.getAdjList();
 	const auto& capacity = graph.get_capacity();
 	for (int u = 0; u < n; ++u) 
@@ -77,18 +105,25 @@ int MSTWeight::findMSTWeight(const Graph& graph)
 			}
 		}
 	}
+
+	// Sort edges by weight:
 	std::sort(edges.begin(), edges.end());
-	DSU dsu(n);
+	DSU dsu(n); // Disjoint Set Union for cycle detection
 	int mst_weight = 0;
 	int edges_used = 0;
+
 	for (const auto& e : edges) 
     {	
 		// Try to unite the sets of u and v
 		if (dsu.unite(e.u, e.v)) 
         {
-			mst_weight += e.weight;
-			edges_used++;
-			if (edges_used == n - 1) break;
+			mst_weight += e.weight; // Add edge weight to MST
+			edges_used++; // Count edges used
+
+			// If we have n-1 edges, MST is complete:
+			if (edges_used == n - 1){ 
+				break;
+			}
 		}
 	}
 	return mst_weight;
